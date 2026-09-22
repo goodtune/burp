@@ -67,7 +67,7 @@
       <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{end}}</ul>
     </details>
     <details class="reviews">
-      <summary>Reviews {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span>{{end}}{{else}}<span class="muted">none yet</span>{{end}}{{range .PR.RequestedReviewers}}<span class="rv rv-requested" title="review requested">@{{.}}</span>{{end}}</summary>
+      <summary>Reviews {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span>{{end}}{{else}}<span class="muted">none yet</span>{{end}}{{range .PR.RequestedReviewers}}<span class="rv rv-requested" title="review requested">@{{.}} · requested</span>{{end}}</summary>
       <ul>{{range .PR.Reviews.Nodes}}<li><b>@{{.Author.Login}}</b> <span class="muted">{{lower (title .State)}} {{relTime .SubmittedAt}}</span>{{if .BodyHTML}}<div class="md">{{safeHTML .BodyHTML}}</div>{{end}}</li>{{else}}<li class="muted">No reviews yet.</li>{{end}}</ul>
     </details>
     <span class="threads">Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</span>
@@ -241,7 +241,7 @@
     {{if $t.ViewerCanResolve}}<button type="button" class="link" data-on:click="$threadId = {{jsStr $t.ID}}, $resolve = {{if $t.IsResolved}}false{{else}}true{{end}}, @post({{jsStr (print $v.Path "/resolve")}})">{{if $t.IsResolved}}Unresolve{{else}}Resolve{{end}}</button>{{end}}
   </div>
   {{range $i, $c := $t.Comments.Nodes}}{{if eq $i 0}}{{$first = $c.DatabaseID}}{{end}}
-  <div class="comment"><b>@{{$c.Author.Login}}</b> <span class="muted small">{{relTime $c.CreatedAt}}</span> <a class="ext muted small" href="{{$c.URL}}">↗</a><div class="md">{{safeHTML $c.BodyHTML}}</div></div>
+  <div class="comment"><div class="comment-head"><b>@{{$c.Author.Login}}</b> <span class="muted small">{{relTime $c.CreatedAt}}</span> <a class="ext small" href="{{$c.URL}}" title="open on GitHub">↗</a></div><div class="md">{{safeHTML $c.BodyHTML}}</div></div>
   {{end}}
   {{if $first}}
   <div class="reply">
