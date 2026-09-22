@@ -6,7 +6,7 @@
           data-init="@get('/inbox/stream')"
           data-on:input__debounce.600ms="@get('/inbox/stream')">
       <input type="search" name="filter" placeholder="Filter, e.g. repo:acme/api label:bug" data-bind:filter>
-      <a class="muted small" href="https://docs.github.com/search-github/searching-on-github/searching-issues-and-pull-requests" target="_blank" rel="noopener">search qualifiers ↗</a>
+      <span class="help">Syntax: <a href="https://docs.github.com/search-github/searching-on-github/searching-issues-and-pull-requests" target="_blank" rel="noopener">GitHub search qualifiers ↗</a></span>
     </form>
   </div>
   <div id="inbox-sections"><p class="muted">Loading your pull requests…</p></div>
@@ -30,7 +30,7 @@
           {{checkIcon .CheckState}}
         </div>
         <div class="row-meta muted small">
-          <span>{{if .Author.AvatarURL}}<img class="avatar" src="{{.Author.AvatarURL}}" alt="">{{end}} {{.Author.Login}}</span> <span class="sep">·</span> <span>{{relTime .UpdatedAt}}</span> <span class="sep">·</span> <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span> <span class="sep">·</span> <span>{{plural .ChangedFiles "file"}}</span> <span class="sep">·</span> <span>{{.Reason}}</span>
+          <span>{{if .Author.AvatarURL}}<img class="avatar" src="{{.Author.AvatarURL}}" alt="">{{end}} {{.Author.Login}}</span> <span class="sep">·</span> <span title="{{absTime .UpdatedAt}}">{{relTime .UpdatedAt}}</span> <span class="sep">·</span> <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span> <span class="sep">·</span> <span>{{plural .ChangedFiles "file"}}</span> <span class="sep">·</span> <span>{{.Reason}}</span>
           {{if .Reviewed}}<span class="progress" title="files you reviewed at the current head"><span style="width: {{pct .Reviewed .ChangedFiles}}%"></span></span> {{.Reviewed}}/{{.ChangedFiles}} reviewed{{end}}
         </div>
       </li>

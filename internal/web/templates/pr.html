@@ -62,8 +62,8 @@
     {{if and (eq .Action.Kind "draft") .Action.CanFix}}<button type="button" data-on:click="@post({{jsStr (print .Path "/ready")}})">Mark ready for review</button>{{end}}
   </div>
   <div class="status-row">
-    <details class="checks" {{if or (eq .CheckState "FAILURE") (eq .CheckState "ERROR")}}open{{end}}>
-      <summary>{{checkIcon .CheckState}} Checks <span class="count">{{if .Checks}}{{len .Checks}}{{else}}none{{end}}</span></summary>
+    <details class="checks">
+      <summary>{{checkIcon .CheckState}} Checks <span class="count">{{if .Checks}}{{len .Checks}}{{else}}none{{end}}</span>{{with .FailingChecks}} <span class="pill bad">{{plural . "failing"}}</span>{{end}}{{with .PendingChecks}} <span class="pill warn">{{plural . "running"}}</span>{{end}}</summary>
       <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{end}}</ul>
     </details>
     <details class="reviews">
@@ -170,11 +170,13 @@
 {{if .Current}}{{with .Current}}
   <div class="diff-head">
     <span class="path"><b>{{.Path}}</b>{{if .PreviousPath}} <span class="muted">(was {{.PreviousPath}})</span>{{end}} <span class="muted small">{{.Status}} · {{.Index}}/{{.Count}}</span></span>
-    <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span>
-    <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">{{icon "bang"}} changed since</span>{{end}}</label>
+    <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span>
     <span class="spacer"></span>
+    <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">{{icon "bang"}} changed since</span>{{end}}</label>
+    <span class="nav">
     {{if .Prev}}<button type="button" data-on:click="$file = {{jsStr .Prev}}, @get({{jsStr (print $.Path "/view")}})">‹ prev</button>{{end}}
     {{if .Next}}<button type="button" data-on:click="$file = {{jsStr .Next}}, @get({{jsStr (print $.Path "/view")}})">next ›</button>{{end}}
+    </span>
   </div>
   {{range .Outdated}}<div class="thread outdated">{{template "thread" (dict "T" . "V" $)}}</div>{{end}}
   {{if .Truncated}}<p class="muted empty">GitHub did not return a text diff for this file (binary, generated, or too large). <a href="{{$.PR.URL}}/files">View on GitHub</a>.</p>{{end}}

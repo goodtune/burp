@@ -156,6 +156,8 @@ type prView struct {
 	ReviewedCount int
 	Checks        []gh.CheckContext
 	CheckState    string
+	FailingChecks int
+	PendingChecks int
 	Action        actionCard
 	CanReview     bool
 	CanMerge      bool
@@ -800,6 +802,14 @@ func indexOf(rows []fileRow, path string) int {
 func (s *Server) decorateHeader(v *prView) {
 	pr := v.PR
 	v.CheckState, v.Checks = pr.Checks()
+	for _, c := range v.Checks {
+		switch c.Outcome() {
+		case "failure":
+			v.FailingChecks++
+		case "pending":
+			v.PendingChecks++
+		}
+	}
 	v.Unresolved, v.ThreadTotal = pr.UnresolvedThreads()
 	v.CanReview = !pr.ViewerDidAuthor && pr.State == "OPEN"
 	if pr.Repository.SquashMergeAllowed {

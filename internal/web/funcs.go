@@ -11,6 +11,7 @@ import (
 func (s *Server) funcs() template.FuncMap {
 	return template.FuncMap{
 		"relTime":    relTime,
+		"absTime":    absTime,
 		"short":      short,
 		"safeHTML":   func(v string) template.HTML { return template.HTML(v) },
 		"jsonAttr":   func(v any) string { b, _ := json.Marshal(v); return string(b) },
@@ -54,8 +55,10 @@ func relTime(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	case d < 30*24*time.Hour:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo ago", int(d.Hours()/24/30))
 	default:
-		return t.Format("2 Jan 2006")
+		return fmt.Sprintf("%dy ago", int(d.Hours()/24/365))
 	}
 }
 
@@ -92,7 +95,7 @@ func icon(name string) template.HTML {
 	case "dot":
 		path = `<circle cx="8" cy="8" r="4" fill="currentColor"/>`
 	case "ring":
-		path = `<circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+		path = `<circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="2"/>`
 	case "dash":
 		path = `<path d="M4 8h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`
 	case "comment":
@@ -107,6 +110,14 @@ func icon(name string) template.HTML {
 		return ""
 	}
 	return template.HTML(`<svg class="i i-` + name + `" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` + path + `</svg>`)
+}
+
+// absTime formats an absolute timestamp for tooltips.
+func absTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Local().Format("2 Jan 2006 15:04 MST")
 }
 
 // checkIcon maps a rollup state or outcome to a glyph and css class.
@@ -137,13 +148,13 @@ func sideLabel(side string) string {
 func stateDot(state string, draft bool) template.HTML {
 	switch {
 	case state == "MERGED":
-		return `<span class="dot dot-merged" title="merged"></span>`
+		return `<span class="dot dot-merged" title="merged">` + icon("merge") + `</span>`
 	case state == "CLOSED":
-		return `<span class="dot dot-closed" title="closed"></span>`
+		return `<span class="dot dot-closed" title="closed">` + icon("x") + `</span>`
 	case draft:
-		return `<span class="dot dot-draft" title="draft"></span>`
+		return `<span class="dot dot-draft" title="draft">` + icon("ring") + `</span>`
 	default:
-		return `<span class="dot dot-open" title="open"></span>`
+		return `<span class="dot dot-open" title="open">` + icon("dot") + `</span>`
 	}
 }
 
