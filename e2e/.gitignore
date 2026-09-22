@@ -1,0 +1,5 @@
+node_modules/
+fakegh/fakegh
+e2e.db*
+playwright-report/
+test-results/

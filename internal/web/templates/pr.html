@@ -205,8 +205,8 @@
 {{define "cell"}}{{if .No}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{.No}}</td>{{else}}<td class="no k{{.L.Kind}}"></td>{{end}}<td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
 
 {{define "anchored"}}{{if or .L.Threads .L.Drafts .L.Composer}}<tr class="anchored"><td colspan="{{.Cols}}">
-  {{range .L.Threads}}<div class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}
-  {{range .L.Drafts}}<div class="draft">
+  {{range .L.Threads}}<div id="thread-{{.ID}}" class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}
+  {{range .L.Drafts}}<div id="draft-{{.ID}}" class="draft">
     <div class="draft-head"><b>@{{$.V.Page.User.Login}}</b> <span class="badge">draft ✎</span> <span class="muted small">{{if .StartLine}}lines {{.StartLine}}–{{.Line}}{{else}}line {{.Line}}{{end}} ({{lower .Side}})</span></div>
     <div class="body">{{.Body}}</div>
     <div class="actions">
@@ -214,8 +214,8 @@
       <button type="button" data-on:click="$draftId = {{jsStr .ID}}, @delete({{jsStr (print $.V.Path "/draft")}})">Delete</button>
     </div>
   </div>{{end}}
-  {{if .L.Composer}}<div class="composer" data-indicator:saving>
-    <div class="muted small">New comment · <span data-text="$composer.startLine ? 'lines ' + $composer.startLine + '–' + $composer.line : 'line ' + $composer.line"></span> (<span data-text="$composer.side.toLowerCase()"></span>) · shift-click a line number to extend</div>
+  {{if .L.Composer}}{{$c := $.V.Sig.Composer}}<div id="composer" class="composer" data-indicator:saving>
+    <div class="muted small">{{if $c.DraftID}}Editing draft{{else}}New comment{{end}} · {{if $c.StartLine}}lines {{$c.StartLine}}–{{$c.Line}}{{else}}line {{$c.Line}}{{end}} ({{lower $c.Side}}) · shift-click a line number to extend</div>
     <textarea rows="4" autofocus placeholder="Leave a comment (Markdown)" data-bind:composer.body></textarea>
     <div class="actions">
       <button type="button" class="primary" data-attr:disabled="$saving" data-on:click="@post({{jsStr (print $.V.Path "/draft")}})">Add to review</button>

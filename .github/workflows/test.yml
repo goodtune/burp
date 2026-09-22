@@ -1,0 +1,121 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go build, vet and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./...
+      - name: Build static binary
+        run: CGO_ENABLED=0 go build -trimpath -o burp ./cmd/burp
+      - name: Binary runs
+        run: ./burp version
+
+  postgres:
+    name: Store contract tests on Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: burp
+          POSTGRES_PASSWORD: burp
+          POSTGRES_DB: burp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U burp" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Contract tests
+        env:
+          BURP_TEST_POSTGRES_DSN: postgres://burp:burp@localhost:5432/burp?sslmode=disable
+        run: go test ./internal/store/...
+
+  vault:
+    name: Store contract tests on Vault
+    runs-on: ubuntu-latest
+    services:
+      vault:
+        image: hashicorp/vault:1.17
+        env:
+          VAULT_DEV_ROOT_TOKEN_ID: root
+          VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+        ports: ["8200:8200"]
+        options: --cap-add=IPC_LOCK
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Wait for Vault
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8200/v1/sys/health && exit 0
+            sleep 1
+          done
+          echo "vault did not become ready" && exit 1
+      - name: Contract tests
+        env:
+          BURP_TEST_VAULT_ADDR: http://localhost:8200
+          BURP_TEST_VAULT_TOKEN: root
+        run: go test ./internal/store/vaultstore/...
+
+  e2e:
+    name: Playwright browser tests
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build burp and the fake GitHub
+        run: |
+          CGO_ENABLED=0 go build -o burp ./cmd/burp
+          go build -o e2e/fakegh/fakegh ./e2e/fakegh
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run browser tests
+        working-directory: e2e
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+
+  container:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t burp:ci .
+      - name: Image runs
+        run: docker run --rm burp:ci version
