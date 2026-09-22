@@ -1,0 +1,15 @@
+{{define "index"}}{{template "head" .}}
+<section class="hero">
+  <h1>Review GitHub pull requests,<br>without losing your place.</h1>
+  {{if .Page.Flash}}<p class="flash">{{.Page.Flash}}</p>{{end}}
+  <p><a class="button primary" href="/auth/login{{if .ReturnTo}}?return_to={{.ReturnTo}}{{end}}">Sign in with GitHub</a></p>
+  <p class="muted">burp acts on GitHub as you. Reviews, comments and approvals you submit here appear on GitHub under your own account.</p>
+  {{if .Page.InstallURL}}<p class="muted">Not installed on your repositories yet? <a href="{{.Page.InstallURL}}">Install the GitHub App</a> so burp receives webhooks for them.</p>{{end}}
+  <ul class="features">
+    <li>A sectioned inbox that orders pull requests by what needs <em>you</em> next.</li>
+    <li>Per-file "reviewed" marks tied to the commit you reviewed, and diffs of only what changed since.</li>
+    <li>Draft comments batched into a single GitHub review.</li>
+    <li>Live updates from GitHub webhooks, no refreshing.</li>
+  </ul>
+</section>
+{{template "foot" .}}{{end}}

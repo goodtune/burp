@@ -1,0 +1,7 @@
+{{define "error"}}{{template "head" .}}
+<section class="hero">
+  <h1>{{.Status}}</h1>
+  <p>{{.Message}}</p>
+  <p><a href="/inbox">Back to inbox</a></p>
+</section>
+{{template "foot" .}}{{end}}

@@ -1,0 +1,29 @@
+{{define "settings"}}{{template "head" .}}
+<section class="settings">
+  <h1>Settings</h1>
+
+  <h2>Account</h2>
+  <p>Signed in as <b>@{{.Page.User.Login}}</b> (id {{.Page.User.ID}}).
+  {{if .TokenExpiry}}GitHub access token expires {{relTime .TokenExpiry}} ({{.TokenExpiry.Format "15:04 MST"}}) and refreshes automatically.{{end}}</p>
+  <form method="post" action="/auth/logout-all"><button type="submit">Sign out everywhere and forget my GitHub authorisation</button></form>
+
+  <h2>GitHub App installations</h2>
+  <p class="muted">Webhooks only arrive for repositories where the App is installed; other repositories still work but refresh once a minute.</p>
+  {{if .InstallError}}<p class="error-box">{{.InstallError}}</p>{{end}}
+  {{if .Installations}}
+  <table class="table">
+    <thead><tr><th>Account</th><th>Type</th><th>Repositories</th><th></th></tr></thead>
+    <tbody>
+    {{range .Installations}}
+      <tr><td>{{.Account}}</td><td>{{.AccountType}}</td><td>{{.Selection}}</td><td>{{if .HTMLURL}}<a href="{{.HTMLURL}}">Configure on GitHub</a>{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted">No installations visible to you.</p>{{end}}
+  {{if .Page.InstallURL}}<p><a class="button" href="{{.Page.InstallURL}}">Install on another account</a></p>{{end}}
+
+  <h2>Review data stored by burp</h2>
+  <p>{{plural .Marks "file review mark"}} · {{plural .Drafts "draft comment"}}</p>
+  <p><button type="button" class="danger" data-on:click="confirm('Delete all your review marks and draft comments?') && @post('/settings/delete-data')">Delete all my review data</button></p>
+</section>
+{{template "foot" .}}{{end}}

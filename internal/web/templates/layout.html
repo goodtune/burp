@@ -1,0 +1,38 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Page.Title}}{{.Page.Title}} · {{end}}burp</title>
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/datastar.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">burp</a>
+  {{if .Page.User}}
+  <nav>
+    <a href="/inbox">Inbox</a>
+    <a href="/settings">Settings</a>
+  </nav>
+  <div class="me">
+    {{if .Page.User.AvatarURL}}<img class="avatar" src="{{.Page.User.AvatarURL}}" alt="">{{end}}
+    <span>@{{.Page.User.Login}}</span>
+    <form method="post" action="/auth/logout"><button class="link" type="submit">Sign out</button></form>
+  </div>
+  {{end}}
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer class="foot">burp · reviews happen on GitHub as you · {{if .Page.DevMode}}<b>dev mode</b>{{end}}</footer>
+</body>
+</html>
+{{end}}
+
+{{define "error_box"}}<div id="{{.ID}}" class="error-box" role="alert">
+  <span>{{.Message}}</span>
+  {{if .Retry}}<button type="button" data-on:click="{{.Retry}}">Retry</button>{{end}}
+</div>{{end}}

@@ -1,0 +1,247 @@
+{{define "pr"}}{{template "head" .}}
+<section class="pr" data-signals="{{.SignalsJSON}}"
+  data-on:keydown__window="evt.key == 'Escape' || !(evt.target.tagName == 'TEXTAREA' || evt.target.tagName == 'INPUT' || evt.target.tagName == 'SELECT' || evt.metaKey || evt.ctrlKey || evt.altKey || !'jknrvac?'.includes(evt.key)) ? ($key = evt.key, @post({{jsStr (print .Path "/key")}})) : null">
+  <div data-init="@get({{jsStr (print .Path "/stream")}})"
+       data-on-signal-patch="$composer.path || $replyTo || $reviewOpen || $mergeOpen ? null : @get({{jsStr (print .Path "/view")}})"
+       data-on-signal-patch-filter="{include: /^prVersion$/}"></div>
+  {{template "pr_notice_empty" .}}
+  <div class="notice ok" style="display:none" data-show="$notice != ''" data-on:click="$notice = ''"><span data-text="$notice"></span> <small>(click to dismiss)</small></div>
+  {{template "pr_header" .}}
+  {{template "pr_toolbar" .}}
+  <div class="pr-body">
+    {{template "pr_files" .}}
+    {{template "pr_diff" .}}
+  </div>
+  <div class="dialog" style="display:none" data-show="$helpOpen" data-on:click__self="$helpOpen = false">
+    <div class="dialog-box">
+      <h3>Keyboard shortcuts</h3>
+      <table class="keys">
+        <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>next / previous file</td></tr>
+        <tr><td><kbd>n</kbd></td><td>next unreviewed file</td></tr>
+        <tr><td><kbd>r</kbd></td><td>toggle reviewed on the current file</td></tr>
+        <tr><td><kbd>v</kbd></td><td>toggle unified / split view</td></tr>
+        <tr><td><kbd>a</kbd></td><td>open the review dialog set to approve</td></tr>
+        <tr><td><kbd>c</kbd></td><td>open the review dialog set to comment</td></tr>
+        <tr><td><kbd>?</kbd></td><td>this help</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>close dialogs and the comment form</td></tr>
+      </table>
+      <p>Click a line number to comment; shift-click another to extend the selection.</p>
+      <p><button type="button" data-on:click="$helpOpen = false">Close</button></p>
+    </div>
+  </div>
+</section>
+{{template "foot" .}}{{end}}
+
+{{define "pr_notice_empty"}}<div id="pr-notice"></div>{{end}}
+
+{{define "pr_header"}}<div id="pr-header" class="pr-header">
+  {{with .PR}}
+  <h1><span class="repo">{{.Repository.NameWithOwner}} #{{.Number}}</span> {{.Title}} <a class="ext" href="{{.URL}}" title="open on GitHub">↗</a></h1>
+  <p class="meta">
+    {{stateDot .State .IsDraft}} {{if .Merged}}Merged{{else}}{{title .State}}{{end}}{{if .IsDraft}} (draft){{end}} ·
+    <b>@{{.Author.Login}}</b> wants to merge <code>{{.HeadRefName}}</code> → <code>{{.BaseRefName}}</code> ·
+    <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span> · {{plural .ChangedFiles "file"}} · {{plural .Commits.TotalCount "commit"}} · updated {{relTime .UpdatedAt}}
+    {{range .Labels.Nodes}}<span class="label" style="border-color:#{{.Color}}">{{.Name}}</span>{{end}}
+  </p>
+  {{end}}
+  {{if .NewHead}}<div class="notice warn">New commits were pushed to this pull request. <button type="button" data-on:click="$head = '', $base = '', @get({{jsStr (print .Path "/view")}})">Load the latest revision</button></div>{{end}}
+  <div class="action action-{{.Action.Kind}}">
+    <b>{{.Action.Title}}</b> <span>{{.Action.Detail}}</span>
+    {{if .Action.URL}}<a href="{{.Action.URL}}">details ↗</a>{{end}}
+    {{if and (eq .Action.Kind "ready") .CanMerge}}<button type="button" class="primary" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
+    {{if and (eq .Action.Kind "review") .CanReview}}<button type="button" class="primary" data-on:click="$reviewOpen = true, $reviewEvent = 'APPROVE'">Review…</button>{{end}}
+    {{if and (eq .Action.Kind "draft") .Action.CanFix}}<button type="button" data-on:click="@post({{jsStr (print .Path "/ready")}})">Mark ready for review</button>{{end}}
+  </div>
+  <div class="status-row">
+    <details class="checks" {{if or (eq .CheckState "FAILURE") (eq .CheckState "ERROR")}}open{{end}}>
+      <summary>{{checkIcon .CheckState}} Checks {{if .Checks}}({{len .Checks}}){{else}}(none){{end}}</summary>
+      <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{end}}</ul>
+    </details>
+    <details class="reviews">
+      <summary>Reviews: {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span> {{end}}{{else}}none yet{{end}}{{range .PR.RequestedReviewers}} <span class="rv rv-requested">@{{.}} requested</span>{{end}}</summary>
+      <ul>{{range .PR.Reviews.Nodes}}<li><b>@{{.Author.Login}}</b> {{lower (title .State)}} {{relTime .SubmittedAt}}{{if .BodyHTML}}<div class="md">{{safeHTML .BodyHTML}}</div>{{end}}</li>{{end}}</ul>
+    </details>
+    <span class="threads">Threads: {{.Unresolved}} unresolved / {{.ThreadTotal}}</span>
+  </div>
+  <details class="conversation">
+    <summary>Conversation ({{len .PR.Comments.Nodes}})</summary>
+    {{if .PR.BodyHTML}}<div class="comment"><b>@{{.PR.Author.Login}}</b> <span class="muted small">opened {{relTime .PR.CreatedAt}}</span><div class="md">{{safeHTML .PR.BodyHTML}}</div></div>{{end}}
+    {{range .PR.Comments.Nodes}}<div class="comment"><b>@{{.Author.Login}}</b> <span class="muted small">{{relTime .CreatedAt}}</span><div class="md">{{safeHTML .BodyHTML}}</div></div>{{end}}
+    <div class="composer">
+      <textarea rows="3" placeholder="Leave a general comment…" data-bind:commentBody></textarea>
+      <button type="button" data-on:click="@post({{jsStr (print .Path "/comment")}})">Post comment</button>
+    </div>
+  </details>
+</div>{{end}}
+
+{{define "pr_toolbar"}}<div id="pr-toolbar" class="pr-toolbar">
+  <label>Compare
+    <select data-bind:base data-on:change="@get({{jsStr (print .Path "/view")}})">
+      <option value="">{{.PR.BaseRefName}} (PR base)</option>
+      {{range .Revisions}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .YourLast}} ★ your last review{{end}}</option>{{end}}
+    </select>
+    →
+    <select data-bind:head data-on:change="@get({{jsStr (print .Path "/view")}})">
+      {{range .Revisions}}{{if ne .Label "your last review"}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .IsHead}} (latest){{end}}</option>{{end}}{{end}}
+    </select>
+  </label>
+  <label class="radio"><input type="radio" value="unified" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})"> unified</label>
+  <label class="radio"><input type="radio" value="split" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})"> split</label>
+  <label class="radio"><input type="checkbox" data-bind:hideReviewed data-on:change="@get({{jsStr (print .Path "/view")}})"> hide reviewed files</label>
+  <span class="spacer"></span>
+  <button type="button" data-on:click="$helpOpen = true" title="keyboard shortcuts">?</button>
+  {{if .CanMerge}}<button type="button" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
+  <button type="button" class="primary" data-on:click="$reviewOpen = true">Review… {{if .Drafts}}<span class="badge">{{len .Drafts}} draft{{if ne (len .Drafts) 1}}s{{end}}</span>{{end}}</button>
+
+  <div class="dialog" style="display:none" data-show="$reviewOpen" data-on:click__self="$reviewOpen = false">
+    <div class="dialog-box">
+      <h3>Submit review</h3>
+      <p>{{plural (len .Drafts) "draft comment"}} will be posted with this review.</p>
+      {{if .Drafts}}<ul class="draft-list">{{range .Drafts}}<li><code>{{.Path}}:{{.Line}}</code> {{.Body}}</li>{{end}}</ul>{{end}}
+      <textarea rows="4" placeholder="Summary (optional)" data-bind:reviewBody></textarea>
+      <div class="choices">
+        <label><input type="radio" value="COMMENT" data-bind:reviewEvent> Comment <span class="muted">feedback without explicit approval</span></label>
+        {{if .CanReview}}
+        <label><input type="radio" value="APPROVE" data-bind:reviewEvent> Approve <span class="muted">ready to merge</span></label>
+        <label><input type="radio" value="REQUEST_CHANGES" data-bind:reviewEvent> Request changes <span class="muted">must be addressed before merging</span></label>
+        {{else}}<p class="muted small">You cannot approve or request changes on your own pull request.</p>{{end}}
+      </div>
+      <div class="actions">
+        <button type="button" data-on:click="$reviewOpen = false">Cancel</button>
+        <button type="button" class="primary" data-indicator:submitting data-attr:disabled="$submitting" data-on:click="@post({{jsStr (print .Path "/submit")}})">Submit review</button>
+      </div>
+    </div>
+  </div>
+
+  {{if .CanMerge}}
+  <div class="dialog" style="display:none" data-show="$mergeOpen" data-on:click__self="$mergeOpen = false">
+    <div class="dialog-box">
+      <h3>Merge #{{.PR.Number}}</h3>
+      <p><code>{{.PR.HeadRefName}}</code> → <code>{{.PR.BaseRefName}}</code> at <code>{{short .PR.HeadRefOid}}</code></p>
+      {{if ne .Action.Kind "ready"}}<p class="notice warn">{{.Action.Title}}: {{.Action.Detail}} GitHub may refuse the merge.</p>{{end}}
+      <label>Method
+        <select data-bind:mergeMethod>{{range .MergeMethods}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+      </label>
+      <div class="actions">
+        <button type="button" data-on:click="$mergeOpen = false">Cancel</button>
+        <button type="button" class="primary" data-indicator:merging data-attr:disabled="$merging" data-on:click="@post({{jsStr (print .Path "/merge")}})">Merge</button>
+      </div>
+    </div>
+  </div>
+  {{end}}
+</div>{{end}}
+
+{{define "pr_files"}}<aside id="pr-files" class="pr-files">
+  <div class="files-head">Files <b>{{.ReviewedCount}}/{{.PR.ChangedFiles}}</b> reviewed
+    <span class="progress"><span style="width: {{pct .ReviewedCount .PR.ChangedFiles}}%"></span></span>
+  </div>
+  {{if .HiddenFiles}}<p class="muted small">{{.HiddenFiles}} reviewed file(s) hidden</p>{{end}}
+  <ul>
+  {{range .Files}}
+    <li class="file{{if .Selected}} selected{{end}}{{if .Reviewed}} reviewed{{end}}">
+      <input type="checkbox" title="reviewed" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})">
+      <a href="#" class="path" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><span class="dir">{{dirname .Path}}</span>{{basename .Path}}</a>
+      <span class="file-meta">
+        {{if .Stale}}<span class="stale" title="changed since you reviewed it">!</span>{{end}}
+        {{if .Unresolved}}<span class="unresolved" title="unresolved threads">💬{{.Unresolved}}</span>{{end}}
+        {{if .Drafts}}<span class="draft-badge" title="your drafts">✎{{.Drafts}}</span>{{end}}
+        <span class="add">+{{.Additions}}</span><span class="del">−{{.Deletions}}</span>
+      </span>
+    </li>
+  {{end}}
+  </ul>
+  <div class="legend muted small">
+    <span><input type="checkbox" checked disabled> reviewed</span> <span class="stale">!</span> changed since you reviewed · <kbd>?</kbd> shortcuts
+  </div>
+</aside>{{end}}
+
+{{define "pr_diff"}}<div id="pr-diff" class="pr-diff">
+{{if .Current}}{{with .Current}}
+  <div class="diff-head">
+    <span class="path"><b>{{.Path}}</b>{{if .PreviousPath}} <span class="muted">(was {{.PreviousPath}})</span>{{end}} <span class="muted small">{{.Status}} · {{.Index}}/{{.Count}}</span></span>
+    <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span>
+    <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">! changed since</span>{{end}}</label>
+    <span class="spacer"></span>
+    {{if .Prev}}<button type="button" data-on:click="$file = {{jsStr .Prev}}, @get({{jsStr (print $.Path "/view")}})">‹ prev</button>{{end}}
+    {{if .Next}}<button type="button" data-on:click="$file = {{jsStr .Next}}, @get({{jsStr (print $.Path "/view")}})">next ›</button>{{end}}
+  </div>
+  {{range .Outdated}}<div class="thread outdated">{{template "thread" (dict "T" . "V" $)}}</div>{{end}}
+  {{if .Truncated}}<p class="muted empty">GitHub did not return a text diff for this file (binary, generated, or too large). <a href="{{$.PR.URL}}/files">View on GitHub</a>.</p>{{end}}
+  {{$view := $.Sig.View}}
+  {{$cur := .}}
+  <table class="diff {{$view}}">
+  {{range .Hunks}}
+    <tr class="hunk"><td colspan="{{if eq $view "split"}}4{{else}}3{{end}}">{{.Header}}</td></tr>
+    {{if eq $view "split"}}
+      {{range .Split}}
+        <tr class="row">
+          {{if .Left}}{{template "cell" (dict "L" .Left "Side" "LEFT" "No" .Left.OldNo "V" $ "Path" $cur.Path)}}{{else}}<td class="no"></td><td class="code empty"></td>{{end}}
+          {{if .Right}}{{template "cell" (dict "L" .Right "Side" "RIGHT" "No" .Right.NewNo "V" $ "Path" $cur.Path)}}{{else}}<td class="no"></td><td class="code empty"></td>{{end}}
+        </tr>
+        {{if .Left}}{{template "anchored" (dict "L" .Left "V" $ "Cols" 4)}}{{end}}
+        {{if .Right}}{{if or .Right.Threads .Right.Drafts .Right.Composer}}{{template "anchored" (dict "L" .Right "V" $ "Cols" 4)}}{{end}}{{end}}
+      {{end}}
+    {{else}}
+      {{range .Unified}}
+        <tr class="row k{{.Kind}}{{if .Selected}} sel{{end}}">
+          <td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "LEFT" "No" .OldNo "V" $)}}">{{if .OldNo}}{{.OldNo}}{{end}}</td>
+          <td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "RIGHT" "No" .NewNo "V" $)}}">{{if .NewNo}}{{.NewNo}}{{end}}</td>
+          <td class="code"><span class="pfx">{{.Prefix}}</span>{{.Text}}</td>
+        </tr>
+        {{template "anchored" (dict "L" . "V" $ "Cols" 3)}}
+      {{end}}
+    {{end}}
+  {{end}}
+  </table>
+  {{if .TooLarge}}<p class="muted empty">Diff truncated after {{5000}} lines. <a href="{{$.PR.URL}}/files">View on GitHub</a>.</p>{{end}}
+{{end}}{{else}}
+  <p class="muted empty">{{if .Files}}Select a file to review.{{else}}No files changed in this range.{{end}}</p>
+{{end}}
+</div>{{end}}
+
+{{define "clickexpr"}}{{if .No}}evt.shiftKey && $composer.path == {{jsStr .Path}} && $composer.side == {{jsStr .Side}} ? ($composer.startLine = Math.min($composer.line, {{.No}}), $composer.line = Math.max($composer.line, {{.No}})) : ($composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.No}}, startLine: 0, draftId: '', body: ''}), @get({{jsStr (print .V.Path "/view")}}){{end}}{{end}}
+
+{{define "cell"}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{if .No}}{{.No}}{{end}}</td><td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
+
+{{define "anchored"}}{{if or .L.Threads .L.Drafts .L.Composer}}<tr class="anchored"><td colspan="{{.Cols}}">
+  {{range .L.Threads}}<div class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}
+  {{range .L.Drafts}}<div class="draft">
+    <div class="draft-head"><b>@{{$.V.Page.User.Login}}</b> <span class="badge">draft ✎</span> <span class="muted small">{{if .StartLine}}lines {{.StartLine}}–{{.Line}}{{else}}line {{.Line}}{{end}} ({{lower .Side}})</span></div>
+    <div class="body">{{.Body}}</div>
+    <div class="actions">
+      <button type="button" data-on:click="$composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.Line}}, startLine: {{.StartLine}}, draftId: {{jsStr .ID}}, body: {{jsStr .Body}}}, @get({{jsStr (print $.V.Path "/view")}})">Edit</button>
+      <button type="button" data-on:click="$draftId = {{jsStr .ID}}, @delete({{jsStr (print $.V.Path "/draft")}})">Delete</button>
+    </div>
+  </div>{{end}}
+  {{if .L.Composer}}<div class="composer" data-indicator:saving>
+    <div class="muted small">New comment · <span data-text="$composer.startLine ? 'lines ' + $composer.startLine + '–' + $composer.line : 'line ' + $composer.line"></span> (<span data-text="$composer.side.toLowerCase()"></span>) · shift-click a line number to extend</div>
+    <textarea rows="4" autofocus placeholder="Leave a comment (Markdown)" data-bind:composer.body></textarea>
+    <div class="actions">
+      <button type="button" class="primary" data-attr:disabled="$saving" data-on:click="@post({{jsStr (print $.V.Path "/draft")}})">Add to review</button>
+      <button type="button" data-on:click="$composer.path = '', @get({{jsStr (print $.V.Path "/view")}})">Cancel</button>
+    </div>
+  </div>{{end}}
+</td></tr>{{end}}{{end}}
+
+{{define "thread"}}{{$t := .T}}{{$v := .V}}{{$first := 0}}
+  <div class="thread-head">
+    {{if $t.IsResolved}}<span class="badge ok">resolved{{if $t.ResolvedBy}} by @{{$t.ResolvedBy.Login}}{{end}}</span>{{else}}<span class="badge warn">unresolved</span>{{end}}
+    {{if $t.IsOutdated}}<span class="badge">outdated{{if $t.Line}}{{else}} · {{$t.Path}}{{end}}</span>{{end}}
+    {{if $t.ViewerCanResolve}}<button type="button" class="link" data-on:click="$threadId = {{jsStr $t.ID}}, $resolve = {{if $t.IsResolved}}false{{else}}true{{end}}, @post({{jsStr (print $v.Path "/resolve")}})">{{if $t.IsResolved}}Unresolve{{else}}Resolve{{end}}</button>{{end}}
+  </div>
+  {{range $i, $c := $t.Comments.Nodes}}{{if eq $i 0}}{{$first = $c.DatabaseID}}{{end}}
+  <div class="comment"><b>@{{$c.Author.Login}}</b> <span class="muted small">{{relTime $c.CreatedAt}}</span> <a class="ext muted small" href="{{$c.URL}}">↗</a><div class="md">{{safeHTML $c.BodyHTML}}</div></div>
+  {{end}}
+  {{if $first}}
+  <div class="reply">
+    <button type="button" class="link" style="display:none" data-show="$replyTo != {{$first}}" data-on:click="$replyTo = {{$first}}, $replyBody = ''">Reply</button>
+    <div style="display:none" data-show="$replyTo == {{$first}}">
+      <textarea rows="3" placeholder="Reply (posted immediately)" data-bind:replyBody></textarea>
+      <div class="actions">
+        <button type="button" class="primary" data-on:click="@post({{jsStr (print $v.Path "/reply")}})">Post reply</button>
+        <button type="button" data-on:click="$replyTo = 0">Cancel</button>
+      </div>
+    </div>
+  </div>
+  {{end}}
+{{end}}

@@ -1,0 +1,42 @@
+{{define "inbox"}}{{template "head" .}}
+<section class="inbox" data-signals="{filter: {{jsStr .Filter}}}">
+  <div class="inbox-head">
+    <h1>Inbox</h1>
+    <form class="inbox-controls" id="inbox-controls" data-on:submit__prevent="@get('/inbox/stream')"
+          data-init="@get('/inbox/stream')"
+          data-on:input__debounce.600ms="@get('/inbox/stream')">
+      <input type="search" name="filter" placeholder="filter, e.g. repo:acme/api or label:bug" data-bind:filter>
+      <span class="muted">GitHub search qualifiers</span>
+    </form>
+  </div>
+  <div id="inbox-sections"><p class="muted">Loading your pull requests…</p></div>
+</section>
+{{template "foot" .}}{{end}}
+
+{{define "inbox_sections"}}<div id="inbox-sections">
+  <p class="muted small">⟳ updated {{relTime .Rendered}} · {{plural .Total "pull request"}}{{if .Filter}} · filter: <code>{{.Filter}}</code>{{end}}</p>
+  {{range .Warnings}}<p class="error-box">{{.}}</p>{{end}}
+  {{range .Sections}}
+  <details class="section" {{if not .Collapse}}open{{end}}>
+    <summary><h2>{{.Title}} <span class="count">{{len .Rows}}</span></h2><span class="muted small">{{.Hint}}</span></summary>
+    {{if .Rows}}
+    <ul class="rows">
+      {{range .Rows}}
+      <li class="row">
+        <div class="row-main">
+          {{stateDot .State .IsDraft}}
+          <span class="repo">{{.Repository.NameWithOwner}} #{{.Number}}</span>
+          <a class="title" href="/pr/{{.Owner}}/{{.Repo}}/{{.Number}}">{{.Title}}</a>
+          {{checkIcon .CheckState}}
+        </div>
+        <div class="row-meta muted small">
+          @{{.Author.Login}} · {{relTime .UpdatedAt}} · <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span> · {{plural .ChangedFiles "file"}} · {{.Reason}}
+          {{if .Reviewed}}<span class="progress" title="files you reviewed at the current head"><span style="width: {{pct .Reviewed .ChangedFiles}}%"></span></span> {{.Reviewed}}/{{.ChangedFiles}} reviewed{{end}}
+        </div>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}<p class="muted empty">Nothing here 🎉</p>{{end}}
+  </details>
+  {{end}}
+</div>{{end}}
