@@ -91,7 +91,7 @@ changelogs (September 2026).
 ## Datastar (frontend transport)
 
 Datastar (data-star.dev, v1.0.x) is a small hypermedia library: HTML carries
-`data-*` attributes (`data-signals`, `data-bind`, `data-on-click`,
+`data-*` attributes (`data-signals`, `data-bind`, `data-on:click`,
 `data-init`, `data-show`, `data-class`, `data-indicator`) and actions
 (`@get`, `@post`, `@patch`, `@delete`) that call the backend. The backend
 answers with Server-Sent Events carrying `datastar-patch-elements` (HTML
