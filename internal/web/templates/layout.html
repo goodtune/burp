@@ -13,8 +13,8 @@
   <a class="brand" href="/">burp</a>
   {{if .Page.User}}
   <nav>
-    <a href="/inbox">Inbox</a>
-    <a href="/settings">Settings</a>
+    <a href="/inbox"{{if eq .Page.Title "Inbox"}} class="active"{{end}}>Inbox</a>
+    <a href="/settings"{{if eq .Page.Title "Settings"}} class="active"{{end}}>Settings</a>
   </nav>
   <div class="me">
     {{if .Page.User.AvatarURL}}<img class="avatar" src="{{.Page.User.AvatarURL}}" alt="">{{end}}
@@ -28,7 +28,7 @@
 
 {{define "foot"}}
 </main>
-<footer class="foot">burp · reviews happen on GitHub as you · {{if .Page.DevMode}}<b>dev mode</b>{{end}}</footer>
+<footer class="foot">burp · reviews happen on GitHub as you{{if .Page.DevMode}} · <b>dev mode</b>{{end}}</footer>
 </body>
 </html>
 {{end}}

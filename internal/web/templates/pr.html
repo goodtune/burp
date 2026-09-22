@@ -36,47 +36,55 @@
 
 {{define "pr_header"}}<div id="pr-header" class="pr-header">
   {{with .PR}}
-  <h1><span class="repo">{{.Repository.NameWithOwner}} #{{.Number}}</span> {{.Title}} <a class="ext" href="{{.URL}}" title="open on GitHub">↗</a></h1>
-  <p class="meta">
-    {{stateDot .State .IsDraft}} {{if .Merged}}Merged{{else}}{{title .State}}{{end}}{{if .IsDraft}} (draft){{end}} ·
-    <b>@{{.Author.Login}}</b> wants to merge <code>{{.HeadRefName}}</code> → <code>{{.BaseRefName}}</code> ·
-    <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span> · {{plural .ChangedFiles "file"}} · {{plural .Commits.TotalCount "commit"}} · updated {{relTime .UpdatedAt}}
-    {{range .Labels.Nodes}}<span class="label" style="border-color:#{{.Color}}">{{.Name}}</span>{{end}}
-  </p>
+  <div class="crumbs"><a href="/inbox">Inbox</a> <span class="sep">/</span> <a href="/inbox?filter=repo:{{.Repository.NameWithOwner}}">{{.Repository.NameWithOwner}}</a> <span class="sep">/</span> <span>#{{.Number}}</span></div>
+  <h1>{{.Title}} <a class="ext" href="{{.URL}}" title="open on GitHub">↗</a></h1>
+  <div class="meta">
+    {{if .Merged}}<span class="state state-merged">Merged</span>{{else if eq .State "CLOSED"}}<span class="state state-closed">Closed</span>{{else if .IsDraft}}<span class="state state-draft">Draft</span>{{else}}<span class="state state-open">Open</span>{{end}}
+    <span class="author">{{if .Author.AvatarURL}}<img class="avatar" src="{{.Author.AvatarURL}}" alt="">{{end}}{{.Author.Login}}</span>
+    <span>wants to merge <code>{{.HeadRefName}}</code> into <code>{{.BaseRefName}}</code></span>
+    <span class="sep">·</span>
+    <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span>
+    <span class="sep">·</span> <span>{{plural .ChangedFiles "file"}}</span>
+    <span class="sep">·</span> <span>{{plural .Commits.TotalCount "commit"}}</span>
+    <span class="sep">·</span> <span>updated {{relTime .UpdatedAt}}</span>
+    {{range .Labels.Nodes}}<span class="label" style="border-color:#{{.Color}};color:#{{.Color}}">{{.Name}}</span>{{end}}
+  </div>
   {{end}}
-  {{if .NewHead}}<div class="notice warn">{{if .Pushed}}New commits were pushed to this pull request.{{else}}You are viewing revision <code>{{short .Head}}</code>, not the latest.{{end}} <button type="button" data-on:click="$head = '', $base = '', @get({{jsStr (print .Path "/view")}})">Load the latest revision</button></div>{{end}}
+  {{if .NewHead}}<div class="notice warn"><span>{{if .Pushed}}New commits were pushed to this pull request.{{else}}You are viewing revision <code>{{short .Head}}</code>, not the latest.{{end}}</span> <button type="button" data-on:click="$head = '', $base = '', @get({{jsStr (print .Path "/view")}})">Load the latest revision</button></div>{{end}}
   {{if .Replaced}}<div class="notice warn">The commits you were viewing are no longer on the branch (force push); showing the latest revision.</div>{{end}}
   <div class="action action-{{.Action.Kind}}">
+    <span class="icon">{{actionIcon .Action.Kind}}</span>
     <b>{{.Action.Title}}</b> <span>{{.Action.Detail}}</span>
     {{if .Action.URL}}<a href="{{.Action.URL}}">details ↗</a>{{end}}
-    {{if and (eq .Action.Kind "ready") .CanMerge}}<button type="button" class="primary" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
+    <span class="spacer"></span>
+    {{if and (eq .Action.Kind "ready") .CanMerge}}<button type="button" class="ok" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
     {{if and (eq .Action.Kind "review") .CanReview}}<button type="button" class="primary" data-on:click="$reviewOpen = true, $reviewEvent = 'APPROVE'">Review…</button>{{end}}
     {{if and (eq .Action.Kind "draft") .Action.CanFix}}<button type="button" data-on:click="@post({{jsStr (print .Path "/ready")}})">Mark ready for review</button>{{end}}
   </div>
   <div class="status-row">
     <details class="checks" {{if or (eq .CheckState "FAILURE") (eq .CheckState "ERROR")}}open{{end}}>
-      <summary>{{checkIcon .CheckState}} Checks {{if .Checks}}({{len .Checks}}){{else}}(none){{end}}</summary>
+      <summary>{{checkIcon .CheckState}} Checks <span class="count">{{if .Checks}}{{len .Checks}}{{else}}none{{end}}</span></summary>
       <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{end}}</ul>
     </details>
     <details class="reviews">
-      <summary>Reviews: {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span> {{end}}{{else}}none yet{{end}}{{range .PR.RequestedReviewers}} <span class="rv rv-requested">@{{.}} requested</span>{{end}}</summary>
-      <ul>{{range .PR.Reviews.Nodes}}<li><b>@{{.Author.Login}}</b> {{lower (title .State)}} {{relTime .SubmittedAt}}{{if .BodyHTML}}<div class="md">{{safeHTML .BodyHTML}}</div>{{end}}</li>{{end}}</ul>
+      <summary>Reviews {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span>{{end}}{{else}}<span class="muted">none yet</span>{{end}}{{range .PR.RequestedReviewers}}<span class="rv rv-requested" title="review requested">@{{.}}</span>{{end}}</summary>
+      <ul>{{range .PR.Reviews.Nodes}}<li><b>@{{.Author.Login}}</b> <span class="muted">{{lower (title .State)}} {{relTime .SubmittedAt}}</span>{{if .BodyHTML}}<div class="md">{{safeHTML .BodyHTML}}</div>{{end}}</li>{{else}}<li class="muted">No reviews yet.</li>{{end}}</ul>
     </details>
-    <span class="threads">Threads: {{.Unresolved}} unresolved / {{.ThreadTotal}}</span>
+    <span class="threads">Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</span>
   </div>
   <details class="conversation">
-    <summary>Conversation ({{len .PR.Comments.Nodes}})</summary>
-    {{if .PR.BodyHTML}}<div class="comment"><b>@{{.PR.Author.Login}}</b> <span class="muted small">opened {{relTime .PR.CreatedAt}}</span><div class="md">{{safeHTML .PR.BodyHTML}}</div></div>{{end}}
-    {{range .PR.Comments.Nodes}}<div class="comment"><b>@{{.Author.Login}}</b> <span class="muted small">{{relTime .CreatedAt}}</span><div class="md">{{safeHTML .BodyHTML}}</div></div>{{end}}
+    <summary>Conversation <span class="count">{{len .PR.Comments.Nodes}}</span></summary>
+    {{if .PR.BodyHTML}}<div class="comment"><div class="comment-head"><b>@{{.PR.Author.Login}}</b> <span class="muted small">opened {{relTime .PR.CreatedAt}}</span></div><div class="md">{{safeHTML .PR.BodyHTML}}</div></div>{{end}}
+    {{range .PR.Comments.Nodes}}<div class="comment"><div class="comment-head"><b>@{{.Author.Login}}</b> <span class="muted small">{{relTime .CreatedAt}}</span></div><div class="md">{{safeHTML .BodyHTML}}</div></div>{{end}}
     <div class="composer">
       <textarea rows="3" placeholder="Leave a general comment…" data-bind:commentBody></textarea>
-      <button type="button" data-on:click="@post({{jsStr (print .Path "/comment")}})">Post comment</button>
+      <div class="actions"><button type="button" class="primary" data-on:click="@post({{jsStr (print .Path "/comment")}})">Post comment</button></div>
     </div>
   </details>
 </div>{{end}}
 
 {{define "pr_toolbar"}}<div id="pr-toolbar" class="pr-toolbar">
-  <label>Compare
+  <span class="group">Compare
     <select data-bind:base data-on:change="@get({{jsStr (print .Path "/view")}})">
       <option value="">{{.PR.BaseRefName}} (PR base)</option>
       {{range .Revisions}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .YourLast}} ★ your last review{{end}}</option>{{end}}
@@ -85,12 +93,14 @@
     <select data-bind:head data-on:change="@get({{jsStr (print .Path "/view")}})">
       {{range .Revisions}}{{if ne .Label "your last review"}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .IsHead}} (latest){{end}}</option>{{end}}{{end}}
     </select>
-  </label>
-  <label class="radio"><input type="radio" value="unified" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})"> unified</label>
-  <label class="radio"><input type="radio" value="split" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})"> split</label>
-  <label class="radio"><input type="checkbox" data-bind:hideReviewed data-on:change="@get({{jsStr (print .Path "/view")}})"> hide reviewed files</label>
+  </span>
+  <span class="seg" role="radiogroup" aria-label="diff view">
+    <label><input type="radio" value="unified" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})">Unified</label>
+    <label><input type="radio" value="split" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})">Split</label>
+  </span>
+  <label class="toggle"><input type="checkbox" data-bind:hideReviewed data-on:change="@get({{jsStr (print .Path "/view")}})"> Hide reviewed</label>
   <span class="spacer"></span>
-  <button type="button" data-on:click="$helpOpen = true" title="keyboard shortcuts">?</button>
+  <button type="button" class="icon" data-on:click="$helpOpen = true" title="keyboard shortcuts"><kbd>?</kbd></button>
   {{if .CanMerge}}<button type="button" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
   <button type="button" class="primary" data-on:click="$reviewOpen = true">Review… {{if .Drafts}}<span class="badge">{{len .Drafts}} draft{{if ne (len .Drafts) 1}}s{{end}}</span>{{end}}</button>
 
@@ -133,15 +143,15 @@
 </div>{{end}}
 
 {{define "pr_files"}}<aside id="pr-files" class="pr-files">
-  <div class="files-head">Files <b>{{.ReviewedCount}}/{{.PR.ChangedFiles}}</b> reviewed
-    <span class="progress"><span style="width: {{pct .ReviewedCount .PR.ChangedFiles}}%"></span></span>
+  <div class="files-head">Files <span class="muted"><b>{{.ReviewedCount}}/{{.PR.ChangedFiles}}</b> reviewed</span>
+    <span class="progress" title="{{pct .ReviewedCount .PR.ChangedFiles}}% reviewed"><span style="width: {{pct .ReviewedCount .PR.ChangedFiles}}%"></span></span>
   </div>
   {{if .HiddenFiles}}<p class="muted small">{{.HiddenFiles}} reviewed file(s) hidden</p>{{end}}
   <ul>
   {{range .Files}}
     <li class="file{{if .Selected}} selected{{end}}{{if .Reviewed}} reviewed{{end}}">
       <input type="checkbox" title="reviewed" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})">
-      <a href="#" class="path" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><span class="dir">{{dirname .Path}}</span>{{basename .Path}}</a>
+      <a href="#" class="path" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><bdi><span class="dir">{{dirname .Path}}</span>{{basename .Path}}</bdi></a>
       <span class="file-meta">
         {{if .Stale}}<span class="stale" title="changed since you reviewed it">!</span>{{end}}
         {{if .Unresolved}}<span class="unresolved" title="unresolved threads">💬{{.Unresolved}}</span>{{end}}
@@ -151,8 +161,8 @@
     </li>
   {{end}}
   </ul>
-  <div class="legend muted small">
-    <span><input type="checkbox" checked disabled> reviewed</span> <span class="stale">!</span> changed since you reviewed · <kbd>?</kbd> shortcuts
+  <div class="legend">
+    <span><span class="stale">!</span> changed since reviewed</span> <span><span class="unresolved">💬</span> unresolved</span> <span><span class="draft-badge">✎</span> drafts</span> <span><kbd>?</kbd> shortcuts</span>
   </div>
 </aside>{{end}}
 
@@ -170,7 +180,7 @@
   {{if .Truncated}}<p class="muted empty">GitHub did not return a text diff for this file (binary, generated, or too large). <a href="{{$.PR.URL}}/files">View on GitHub</a>.</p>{{end}}
   {{$view := $.Sig.View}}
   {{$cur := .}}
-  <table class="diff {{$view}}">
+  <div class="diff-scroll"><table class="diff {{$view}}">
   {{range .Hunks}}
     <tr class="hunk"><td colspan="{{if eq $view "split"}}4{{else}}3{{end}}">{{.Header}}</td></tr>
     {{if eq $view "split"}}
@@ -193,7 +203,7 @@
       {{end}}
     {{end}}
   {{end}}
-  </table>
+  </table></div>
   {{if .TooLarge}}<p class="muted empty">Diff truncated after {{5000}} lines. <a href="{{$.PR.URL}}/files">View on GitHub</a>.</p>{{end}}
 {{end}}{{else}}
   <p class="muted empty">{{if .Files}}Select a file to review.{{else}}No files changed in this range.{{end}}</p>
@@ -215,7 +225,7 @@
     </div>
   </div>{{end}}
   {{if .L.Composer}}{{$c := $.V.Sig.Composer}}<div id="composer" class="composer" data-indicator:saving>
-    <div class="muted small">{{if $c.DraftID}}Editing draft{{else}}New comment{{end}} · {{if $c.StartLine}}lines {{$c.StartLine}}–{{$c.Line}}{{else}}line {{$c.Line}}{{end}} ({{lower $c.Side}}) · shift-click a line number to extend</div>
+    <div class="hint muted small">{{if $c.DraftID}}Editing draft{{else}}New comment{{end}} · {{if $c.StartLine}}lines {{$c.StartLine}}–{{$c.Line}}{{else}}line {{$c.Line}}{{end}} ({{lower $c.Side}}) · shift-click a line number to extend</div>
     <textarea rows="4" autofocus placeholder="Leave a comment (Markdown)" data-bind:composer.body></textarea>
     <div class="actions">
       <button type="button" class="primary" data-attr:disabled="$saving" data-on:click="@post({{jsStr (print $.V.Path "/draft")}})">Add to review</button>

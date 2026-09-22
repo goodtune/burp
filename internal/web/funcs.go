@@ -10,19 +10,20 @@ import (
 
 func (s *Server) funcs() template.FuncMap {
 	return template.FuncMap{
-		"relTime":   relTime,
-		"short":     short,
-		"safeHTML":  func(v string) template.HTML { return template.HTML(v) },
-		"jsonAttr":  func(v any) string { b, _ := json.Marshal(v); return string(b) },
-		"jsStr":     jsStr,
-		"add":       func(a, b int) int { return a + b },
-		"sub":       func(a, b int) int { return a - b },
-		"pct":       pct,
-		"lower":     strings.ToLower,
-		"title":     titleCase,
-		"checkIcon": checkIcon,
-		"stateDot":  stateDot,
-		"plural":    plural,
+		"relTime":    relTime,
+		"short":      short,
+		"safeHTML":   func(v string) template.HTML { return template.HTML(v) },
+		"jsonAttr":   func(v any) string { b, _ := json.Marshal(v); return string(b) },
+		"jsStr":      jsStr,
+		"add":        func(a, b int) int { return a + b },
+		"sub":        func(a, b int) int { return a - b },
+		"pct":        pct,
+		"lower":      strings.ToLower,
+		"title":      titleCase,
+		"checkIcon":  checkIcon,
+		"stateDot":   stateDot,
+		"actionIcon": actionIcon,
+		"plural":     plural,
 		"seq": func(n int) []int {
 			out := make([]int, n)
 			for i := range out {
@@ -142,4 +143,20 @@ func dict(kv ...any) (map[string]any, error) {
 		m[k] = kv[i+1]
 	}
 	return m, nil
+}
+
+// actionIcon picks a glyph for the next-action card.
+func actionIcon(kind string) string {
+	switch kind {
+	case "ready", "merged":
+		return "✔"
+	case "checks", "conflict", "changes", "closed":
+		return "✖"
+	case "draft":
+		return "✎"
+	case "threads":
+		return "💬"
+	default:
+		return "●"
+	}
 }

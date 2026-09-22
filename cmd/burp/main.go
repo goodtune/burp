@@ -5,6 +5,8 @@
 //	burp serve     start the server (default)
 //	burp migrate   apply database migrations and exit
 //	burp keygen    print a new BURP_ENCRYPTION_KEY
+//	burp dev-session <github-user-id>
+//	               print a session cookie for a signed-in user (dev mode only)
 //	burp version   print the version
 package main
 
@@ -12,10 +14,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -46,12 +50,14 @@ func main() {
 		var key string
 		key, err = crypto.GenerateKey()
 		fmt.Println(key)
+	case "dev-session":
+		err = devSession(os.Args[2:])
 	case "version":
 		fmt.Println("burp", version)
 	case "help", "-h", "--help":
-		fmt.Println("usage: burp [serve|migrate|keygen|version]")
+		fmt.Println("usage: burp [serve|migrate|keygen|dev-session <github-user-id>|version]")
 	default:
-		err = fmt.Errorf("unknown command %q (try: serve, migrate, keygen, version)", cmd)
+		err = fmt.Errorf("unknown command %q (try: serve, migrate, keygen, dev-session, version)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "burp:", err)
@@ -102,6 +108,43 @@ func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (st
 		logger.Info("store", "driver", cfg.Store.Driver)
 		return st, enc, nil
 	}
+}
+
+// devSession mints a browser session for an already signed-in user and prints
+// the cookie value. It only works in dev mode and exists so local tooling
+// (screenshots, Playwright) can drive an authenticated UI without OAuth.
+func devSession(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: burp dev-session <github-user-id>")
+	}
+	uid, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("user id: %w", err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if !cfg.DevMode {
+		return errors.New("dev-session requires BURP_DEV_MODE=true")
+	}
+	ctx := context.Background()
+	st, _, err := openStore(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	u, err := st.GetUser(ctx, uid)
+	if err != nil {
+		return fmt.Errorf("user %d: %w (sign in through the browser first)", uid, err)
+	}
+	tok, err := web.MintSession(ctx, st, u.ID, cfg.SessionTTL)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "session for @%s (expires in %s); cookie value follows on stdout\n", u.Login, cfg.SessionTTL)
+	fmt.Println(tok)
+	return nil
 }
 
 func migrate() error {

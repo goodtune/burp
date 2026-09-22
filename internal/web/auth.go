@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -95,9 +96,8 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	tok := randomToken()
-	sess := &store.Session{TokenHash: hashToken(tok), UserID: u.ID, ExpiresAt: time.Now().Add(s.cfg.SessionTTL)}
-	if err := s.store.CreateSession(r.Context(), sess); err != nil {
+	tok, err := MintSession(r.Context(), s.store, u.ID, s.cfg.SessionTTL)
+	if err != nil {
 		s.logger.Error("creating session", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -183,4 +183,15 @@ func (s *Server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
 	}
 	sse := newSSE(w, r)
 	_ = sse.Redirect("/settings")
+}
+
+// MintSession creates a browser session for user id and returns the raw
+// cookie value; only its hash is stored.
+func MintSession(ctx context.Context, st store.Store, userID int64, ttl time.Duration) (string, error) {
+	tok := randomToken()
+	sess := &store.Session{TokenHash: hashToken(tok), UserID: userID, ExpiresAt: time.Now().Add(ttl)}
+	if err := st.CreateSession(ctx, sess); err != nil {
+		return "", err
+	}
+	return tok, nil
 }
