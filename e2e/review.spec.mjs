@@ -53,7 +53,7 @@ test('clicking a line number opens the composer and saves a draft', async () => 
   await composer.fill('Should this be exported?');
   await page.getByRole('button', { name: 'Add to review' }).click();
   await expect(page.locator('.draft .body', { hasText: 'Should this be exported?' })).toBeVisible();
-  await expect(page.locator('.draft .draft-head')).toContainText('line 2 (right)');
+  await expect(page.locator('.draft .draft-head')).toContainText('line 2, new side');
   await expect(page.locator('#pr-toolbar .badge', { hasText: '1 draft' })).toBeVisible();
 });
 
