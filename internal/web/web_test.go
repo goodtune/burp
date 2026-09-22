@@ -288,6 +288,55 @@ func readSSE(t *testing.T, resp *http.Response, want int, timeout time.Duration)
 
 func joinEvents(ev []string) string { return strings.Join(ev, "\n---\n") }
 
+// sseReader reads events incrementally from one long-lived stream.
+type sseReader struct {
+	t      *testing.T
+	resp   *http.Response
+	events chan string
+}
+
+func newSSEReader(t *testing.T, resp *http.Response) *sseReader {
+	t.Helper()
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("not an SSE response: %s %d", ct, resp.StatusCode)
+	}
+	r := &sseReader{t: t, resp: resp, events: make(chan string, 64)}
+	go func() {
+		defer close(r.events)
+		sc := bufio.NewScanner(resp.Body)
+		sc.Buffer(make([]byte, 1<<20), 8<<20)
+		var cur strings.Builder
+		for sc.Scan() {
+			line := sc.Text()
+			if line == "" {
+				if cur.Len() > 0 {
+					r.events <- cur.String()
+					cur.Reset()
+				}
+				continue
+			}
+			cur.WriteString(line + "\n")
+		}
+	}()
+	t.Cleanup(func() { resp.Body.Close() })
+	return r
+}
+
+// next returns the next event or fails after timeout.
+func (r *sseReader) next(timeout time.Duration) string {
+	r.t.Helper()
+	select {
+	case ev, ok := <-r.events:
+		if !ok {
+			r.t.Fatal("stream closed")
+		}
+		return ev
+	case <-time.After(timeout):
+		r.t.Fatal("timeout waiting for event")
+	}
+	return ""
+}
+
 // ---- tests --------------------------------------------------------------
 
 func TestIndexAndAuthGuards(t *testing.T) {
@@ -574,10 +623,33 @@ func TestPRStreamPushesOnChange(t *testing.T) {
 		h.gh.mu.Unlock()
 		h.bus.Publish(bus.Event{Topic: bus.PRTopic("acme", "api", 5), Kind: "pull_request", Action: "synchronize"})
 	}()
-	ev := readSSE(t, resp, 2, 6*time.Second)
-	out := joinEvents(ev)
-	if !strings.Contains(out, `id="pr-header"`) || !strings.Contains(out, "New commits were pushed") || !strings.Contains(out, `"prVersion": "`) {
+	rd := newSSEReader(t, resp)
+	out := rd.next(6 * time.Second)
+	if !strings.Contains(out, `id="pr-header"`) || !strings.Contains(out, "New commits were pushed") || strings.Contains(out, `"prVersion": "`) {
 		t.Fatalf("stream: %s", out)
+	}
+	// A later, non-head change bumps prVersion so the page refreshes itself.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		h.gh.mu.Lock()
+		h.gh.threads = `[]`
+		h.gh.mu.Unlock()
+		h.bus.Publish(bus.Event{Topic: bus.PRTopic("acme", "api", 5), Kind: "pull_request_review_thread", Action: "resolved"})
+	}()
+	out = rd.next(6*time.Second) + rd.next(6*time.Second)
+	if strings.Contains(out, "New commits were pushed") || !strings.Contains(out, `"prVersion": "`) {
+		t.Fatalf("stream second event: %s", out)
+	}
+	// Viewing an older revision shows the banner on a normal render.
+	resp = h.request(http.MethodGet, "/pr/acme/api/5/view", map[string]any{"head": "C1"}, true)
+	out = joinEvents(readSSE(t, resp, 6, 3*time.Second))
+	if !strings.Contains(out, "not the latest") {
+		t.Fatalf("older revision banner: %s", out)
+	}
+	resp = h.request(http.MethodGet, "/pr/acme/api/5/view", map[string]any{"head": "GONE"}, true)
+	out = joinEvents(readSSE(t, resp, 6, 3*time.Second))
+	if !strings.Contains(out, "force push") || !strings.Contains(out, `"head":"HEAD2"`) {
+		t.Fatalf("replaced revision banner: %s", out)
 	}
 }
 

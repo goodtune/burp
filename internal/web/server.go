@@ -101,7 +101,31 @@ func New(d Deps) (*Server, error) {
 }
 
 // Handler returns the root handler.
-func (s *Server) Handler() http.Handler { return s.mux }
+func (s *Server) Handler() http.Handler { return s.accessLog(s.mux) }
+
+// accessLog logs every request at debug level (streams log when they end).
+func (s *Server) accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		s.logger.Debug("http", "method", r.Method, "path", r.URL.Path, "status", sw.status, "duration", time.Since(start).Truncate(time.Millisecond), "datastar", isDatastar(r))
+	})
+}
+
+// statusWriter records the status code while keeping Flush available for
+// SSE (http.ResponseController looks for it via Unwrap).
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (s *Server) routes() {
 	m := http.NewServeMux()

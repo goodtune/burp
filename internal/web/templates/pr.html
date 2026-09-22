@@ -44,7 +44,8 @@
     {{range .Labels.Nodes}}<span class="label" style="border-color:#{{.Color}}">{{.Name}}</span>{{end}}
   </p>
   {{end}}
-  {{if .NewHead}}<div class="notice warn">New commits were pushed to this pull request. <button type="button" data-on:click="$head = '', $base = '', @get({{jsStr (print .Path "/view")}})">Load the latest revision</button></div>{{end}}
+  {{if .NewHead}}<div class="notice warn">{{if .Pushed}}New commits were pushed to this pull request.{{else}}You are viewing revision <code>{{short .Head}}</code>, not the latest.{{end}} <button type="button" data-on:click="$head = '', $base = '', @get({{jsStr (print .Path "/view")}})">Load the latest revision</button></div>{{end}}
+  {{if .Replaced}}<div class="notice warn">The commits you were viewing are no longer on the branch (force push); showing the latest revision.</div>{{end}}
   <div class="action action-{{.Action.Kind}}">
     <b>{{.Action.Title}}</b> <span>{{.Action.Detail}}</span>
     {{if .Action.URL}}<a href="{{.Action.URL}}">details ↗</a>{{end}}
@@ -184,8 +185,8 @@
     {{else}}
       {{range .Unified}}
         <tr class="row k{{.Kind}}{{if .Selected}} sel{{end}}">
-          <td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "LEFT" "No" .OldNo "V" $)}}">{{if .OldNo}}{{.OldNo}}{{end}}</td>
-          <td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "RIGHT" "No" .NewNo "V" $)}}">{{if .NewNo}}{{.NewNo}}{{end}}</td>
+          {{if .OldNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "LEFT" "No" .OldNo "V" $)}}">{{.OldNo}}</td>{{else}}<td class="no"></td>{{end}}
+          {{if .NewNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "RIGHT" "No" .NewNo "V" $)}}">{{.NewNo}}</td>{{else}}<td class="no"></td>{{end}}
           <td class="code"><span class="pfx">{{.Prefix}}</span>{{.Text}}</td>
         </tr>
         {{template "anchored" (dict "L" . "V" $ "Cols" 3)}}
@@ -199,9 +200,9 @@
 {{end}}
 </div>{{end}}
 
-{{define "clickexpr"}}{{if .No}}evt.shiftKey && $composer.path == {{jsStr .Path}} && $composer.side == {{jsStr .Side}} ? ($composer.startLine = Math.min($composer.line, {{.No}}), $composer.line = Math.max($composer.line, {{.No}})) : ($composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.No}}, startLine: 0, draftId: '', body: ''}), @get({{jsStr (print .V.Path "/view")}}){{end}}{{end}}
+{{define "clickexpr"}}evt.shiftKey && $composer.path == {{jsStr .Path}} && $composer.side == {{jsStr .Side}} ? ($composer.startLine = Math.min($composer.line, {{.No}}), $composer.line = Math.max($composer.line, {{.No}})) : ($composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.No}}, startLine: 0, draftId: '', body: ''}), @get({{jsStr (print .V.Path "/view")}}){{end}}
 
-{{define "cell"}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{if .No}}{{.No}}{{end}}</td><td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
+{{define "cell"}}{{if .No}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{.No}}</td>{{else}}<td class="no k{{.L.Kind}}"></td>{{end}}<td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
 
 {{define "anchored"}}{{if or .L.Threads .L.Drafts .L.Composer}}<tr class="anchored"><td colspan="{{.Cols}}">
   {{range .L.Threads}}<div class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}

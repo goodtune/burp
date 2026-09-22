@@ -162,9 +162,14 @@ type prView struct {
 	MergeMethods  []string
 	Version       string
 	Warnings      []string
-	NewHead       bool
-	Unresolved    int
-	ThreadTotal   int
+	// NewHead shows the "not on the latest revision" banner; Pushed marks
+	// the stream's "new commits arrived" variant; Replaced means the
+	// revision the user was viewing disappeared (force push).
+	NewHead     bool
+	Pushed      bool
+	Replaced    bool
+	Unresolved  int
+	ThreadTotal int
 }
 
 // URL helpers used by templates.
@@ -510,6 +515,7 @@ func (s *Server) handlePRStream(w http.ResponseWriter, r *http.Request) {
 	sse := newSSE(w, r)
 	ctx := sse.Context()
 	last := sig.PRVersion
+	lastHead := sig.Head
 	sub := s.bus.Open(bus.PRTopic(key.Owner, key.Repo, key.Number))
 	defer sub.Cancel()
 
@@ -533,8 +539,13 @@ func (s *Server) handlePRStream(w http.ResponseWriter, r *http.Request) {
 		view := &prView{Key: key, PR: pr, Sig: sig, Version: v}
 		view.Sig.PRVersion = v
 		s.decorateHeader(view)
-		if sig.Head != "" && sig.Head != pr.HeadRefOid {
-			view.NewHead = true
+		pushed := lastHead != "" && lastHead != pr.HeadRefOid
+		lastHead = pr.HeadRefOid
+		if pushed {
+			// New commits: show the banner and let the user decide when to
+			// switch revisions instead of changing the diff under them.
+			view.NewHead, view.Pushed = true, true
+			return s.patch(sse, "pr_header", view) == nil
 		}
 		if err := s.patch(sse, "pr_header", view); err != nil {
 			return false
@@ -595,8 +606,9 @@ func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, 
 	if sig.Head != "" && sig.Head != pr.HeadRefOid {
 		if commitKnown(pr, sig.Head) {
 			view.Head = sig.Head
+			view.NewHead = true
 		} else {
-			view.NewHead = false
+			view.Replaced = true
 		}
 	}
 	view.Sig.Head = view.Head
