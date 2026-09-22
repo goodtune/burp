@@ -107,6 +107,8 @@ main { padding: 20px; max-width: 1680px; margin: 0 auto; }
 .row-main { display: flex; gap: 10px; align-items: center; }
 .row .repo, .pr-header .repo { color: var(--muted); }
 .row .title { font-weight: 600; flex: 1; color: var(--fg); }
+.row-meta .avatar { width: 16px; height: 16px; } .row-meta .sep { color: var(--faint); }
+.inbox-status { margin: 0 0 4px; }
 .row-meta { margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .empty { padding: 10px 14px; color: var(--muted); }
 
