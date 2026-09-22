@@ -55,6 +55,26 @@ func TestPublishSubscribe(t *testing.T) {
 	}
 }
 
+func TestSetTopics(t *testing.T) {
+	b := New()
+	sub := b.Open("a")
+	defer sub.Cancel()
+	sub.SetTopics("b")
+	b.Publish(Event{Topic: "a"})
+	b.Publish(Event{Topic: "b"})
+	select {
+	case ev := <-sub.C:
+		if ev.Topic != "b" {
+			t.Fatalf("got %s", ev.Topic)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no event")
+	}
+	if RepoTopic("o", "r") != "repo:o/r" {
+		t.Fatal(RepoTopic("o", "r"))
+	}
+}
+
 func TestDropWhenFull(t *testing.T) {
 	b := New()
 	_, cancel := b.Subscribe("a")

@@ -1,8 +1,10 @@
 module github.com/goodtune/burp
 
-go 1.25.0
+go 1.26.0
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/go-github/v91 v91.0.0
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/jackc/pgx/v5 v5.11.0
 	modernc.org/sqlite v1.59.0
@@ -12,6 +14,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect

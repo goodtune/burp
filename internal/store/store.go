@@ -74,12 +74,12 @@ type FileMark struct {
 
 // Draft is a review comment held by burp until the user submits a review.
 type Draft struct {
-	ID        string
-	UserID    int64
-	Owner     string
-	Repo      string
-	Number    int
-	Path      string
+	ID     string
+	UserID int64
+	Owner  string
+	Repo   string
+	Number int
+	Path   string
 	// Side is "LEFT" or "RIGHT". Line is the line on that side; StartLine
 	// is zero for single-line comments.
 	Side      string

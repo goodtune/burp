@@ -33,6 +33,8 @@ func UserTopic(login string) string { return "user:" + login }
 
 func SHATopic(sha string) string { return "sha:" + sha }
 
+func RepoTopic(owner, repo string) string { return "repo:" + owner + "/" + repo }
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -60,6 +62,47 @@ type subscriber struct {
 	topics map[string]struct{}
 }
 
+// Subscription is a live subscription whose topic set can be changed.
+type Subscription struct {
+	C      <-chan Event
+	bus    *Bus
+	sub    *subscriber
+	cancel func()
+}
+
+// SetTopics replaces the topics the subscription listens on.
+func (s *Subscription) SetTopics(topics ...string) {
+	next := make(map[string]struct{}, len(topics))
+	for _, t := range topics {
+		next[t] = struct{}{}
+	}
+	s.bus.mu.Lock()
+	s.sub.topics = next
+	s.bus.mu.Unlock()
+}
+
+// Cancel removes the subscription. It is safe to call more than once.
+func (s *Subscription) Cancel() { s.cancel() }
+
+// Open creates a Subscription on the given topics.
+func (b *Bus) Open(topics ...string) *Subscription {
+	s := &subscriber{ch: make(chan Event, 16), topics: make(map[string]struct{}, len(topics))}
+	for _, t := range topics {
+		s.topics[t] = struct{}{}
+	}
+	b.mu.Lock()
+	b.subs[s] = struct{}{}
+	b.mu.Unlock()
+	var once sync.Once
+	return &Subscription{C: s.ch, bus: b, sub: s, cancel: func() {
+		once.Do(func() {
+			b.mu.Lock()
+			delete(b.subs, s)
+			b.mu.Unlock()
+		})
+	}}
+}
+
 // Bus fans events out to subscribers.
 type Bus struct {
 	mu   sync.RWMutex
@@ -76,21 +119,8 @@ func New() *Bus {
 // Subscribe returns a channel that receives events for any of the topics
 // and a cancel function that must be called when done.
 func (b *Bus) Subscribe(topics ...string) (<-chan Event, func()) {
-	s := &subscriber{ch: make(chan Event, 16), topics: make(map[string]struct{}, len(topics))}
-	for _, t := range topics {
-		s.topics[t] = struct{}{}
-	}
-	b.mu.Lock()
-	b.subs[s] = struct{}{}
-	b.mu.Unlock()
-	var once sync.Once
-	return s.ch, func() {
-		once.Do(func() {
-			b.mu.Lock()
-			delete(b.subs, s)
-			b.mu.Unlock()
-		})
-	}
+	s := b.Open(topics...)
+	return s.C, s.Cancel
 }
 
 // Publish delivers ev to every subscriber of ev.Topic without blocking.
