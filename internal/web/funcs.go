@@ -23,6 +23,8 @@ func (s *Server) funcs() template.FuncMap {
 		"checkIcon":  checkIcon,
 		"stateDot":   stateDot,
 		"actionIcon": actionIcon,
+		"icon":       icon,
+		"sideLabel":  sideLabel,
 		"plural":     plural,
 		"seq": func(n int) []int {
 			out := make([]int, n)
@@ -78,20 +80,57 @@ func titleCase(v string) string {
 	return strings.ToUpper(v[:1]) + v[1:]
 }
 
+// icon renders a small inline SVG glyph so that status marks share one
+// visual weight regardless of platform emoji fonts.
+func icon(name string) template.HTML {
+	var path string
+	switch name {
+	case "check":
+		path = `<path d="M13.5 4.5 6.5 11.5 2.5 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+	case "x":
+		path = `<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`
+	case "dot":
+		path = `<circle cx="8" cy="8" r="4" fill="currentColor"/>`
+	case "ring":
+		path = `<circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+	case "dash":
+		path = `<path d="M4 8h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`
+	case "comment":
+		path = `<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>`
+	case "pencil":
+		path = `<path d="M11.5 2.5l2 2-8 8H3.5v-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>`
+	case "bang":
+		path = `<path d="M8 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12.5" r="1.2" fill="currentColor"/>`
+	case "merge":
+		path = `<circle cx="4" cy="3.5" r="1.5" fill="currentColor"/><circle cx="4" cy="12.5" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/><path d="M4 5v6M4 5c0 3 4 3 6.5 3" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+	default:
+		return ""
+	}
+	return template.HTML(`<svg class="i i-` + name + `" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` + path + `</svg>`)
+}
+
 // checkIcon maps a rollup state or outcome to a glyph and css class.
 func checkIcon(state string) template.HTML {
 	switch strings.ToLower(state) {
 	case "success":
-		return `<span class="ck ck-ok" title="checks passed">✔</span>`
+		return `<span class="ck ck-ok" title="checks passed">` + icon("check") + `</span>`
 	case "failure", "error":
-		return `<span class="ck ck-bad" title="checks failed">✖</span>`
+		return `<span class="ck ck-bad" title="checks failed">` + icon("x") + `</span>`
 	case "pending", "expected":
-		return `<span class="ck ck-wait" title="checks running">●</span>`
+		return `<span class="ck ck-wait" title="checks running">` + icon("dot") + `</span>`
 	case "skipped", "neutral":
-		return `<span class="ck ck-skip" title="skipped">–</span>`
+		return `<span class="ck ck-skip" title="skipped">` + icon("dash") + `</span>`
 	default:
-		return `<span class="ck ck-none" title="no checks">○</span>`
+		return `<span class="ck ck-none" title="no checks">` + icon("ring") + `</span>`
 	}
+}
+
+// sideLabel explains which side of the diff a comment is anchored to.
+func sideLabel(side string) string {
+	if strings.EqualFold(side, "LEFT") {
+		return "old side"
+	}
+	return "new side"
 }
 
 // stateDot renders the PR state marker.

@@ -639,16 +639,7 @@ func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, 
 	}
 
 	// Files for the range.
-	var files []gh.ChangedFile
-	if view.Base == "" && view.Head == pr.HeadRefOid {
-		files, err = client.Files(ctx, key.Owner, key.Repo, key.Number)
-	} else {
-		base := view.Base
-		if base == "" {
-			base = pr.BaseRefOid
-		}
-		files, err = client.Compare(ctx, key.Owner, key.Repo, base, view.Head)
-	}
+	files, err := s.rangeFiles(ctx, client, key, pr, view.Base, view.Head)
 	if err != nil {
 		return nil, err
 	}
@@ -941,6 +932,45 @@ func short(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// rangeFiles returns the changed files for base..head, using the pull
+// request's own file list when the range is the whole PR. Results are cached:
+// commit ranges are immutable, the PR list for a head expires after filesTTL.
+func (s *Server) rangeFiles(ctx context.Context, client *gh.Client, key store.PRKey, pr *gh.PullRequest, base, head string) ([]gh.ChangedFile, error) {
+	whole := base == "" && head == pr.HeadRefOid
+	var ck string
+	if whole {
+		ck = fmt.Sprintf("%s/%s#%d@%s", key.Owner, key.Repo, key.Number, head)
+	} else {
+		if base == "" {
+			base = pr.BaseRefOid
+		}
+		ck = key.Owner + "/" + key.Repo + ":" + base + ".." + head
+	}
+	s.filesMu.Lock()
+	e, ok := s.filesCache[ck]
+	s.filesMu.Unlock()
+	if ok && (!whole || time.Since(e.at) < filesTTL) {
+		return e.files, nil
+	}
+	var files []gh.ChangedFile
+	var err error
+	if whole {
+		files, err = client.Files(ctx, key.Owner, key.Repo, key.Number)
+	} else {
+		files, err = client.Compare(ctx, key.Owner, key.Repo, base, head)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.filesMu.Lock()
+	if s.filesCache == nil || len(s.filesCache) > 256 {
+		s.filesCache = map[string]filesEntry{}
+	}
+	s.filesCache[ck] = filesEntry{files: files, at: time.Now()}
+	s.filesMu.Unlock()
+	return files, nil
 }
 
 // changedBetween returns the set of paths that differ between two commits,

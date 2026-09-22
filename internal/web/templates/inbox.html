@@ -5,8 +5,8 @@
     <form class="inbox-controls" id="inbox-controls" data-on:submit__prevent="@get('/inbox/stream')"
           data-init="@get('/inbox/stream')"
           data-on:input__debounce.600ms="@get('/inbox/stream')">
-      <input type="search" name="filter" placeholder="filter, e.g. repo:acme/api or label:bug" data-bind:filter>
-      <span class="muted">GitHub search qualifiers</span>
+      <input type="search" name="filter" placeholder="Filter, e.g. repo:acme/api label:bug" data-bind:filter>
+      <a class="muted small" href="https://docs.github.com/search-github/searching-on-github/searching-issues-and-pull-requests" target="_blank" rel="noopener">search qualifiers ↗</a>
     </form>
   </div>
   <div id="inbox-sections"><p class="muted">Loading your pull requests…</p></div>
@@ -25,7 +25,7 @@
       <li class="row">
         <div class="row-main">
           {{stateDot .State .IsDraft}}
-          <span class="repo mono">{{.Repository.NameWithOwner}}#{{.Number}}</span>
+          <span class="repo">{{.Repository.NameWithOwner}} <span class="num">#{{.Number}}</span></span>
           <a class="title" href="/pr/{{.Owner}}/{{.Repo}}/{{.Number}}">{{.Title}}</a>
           {{checkIcon .CheckState}}
         </div>
@@ -36,7 +36,7 @@
       </li>
       {{end}}
     </ul>
-    {{else}}<p class="muted empty">Nothing here 🎉</p>{{end}}
+    {{else}}<p class="empty">Nothing here.</p>{{end}}
   </details>
   {{end}}
 </div>{{end}}

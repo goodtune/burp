@@ -67,7 +67,21 @@ type Server struct {
 	// that "changed since you reviewed" markers do not re-hit GitHub.
 	compareMu    sync.Mutex
 	compareCache map[string]map[string]bool
+
+	// filesCache remembers changed-file lists per (repo, range, head) so
+	// that switching views or files does not re-fetch the diff from GitHub.
+	filesMu    sync.Mutex
+	filesCache map[string]filesEntry
 }
+
+type filesEntry struct {
+	files []gh.ChangedFile
+	at    time.Time
+}
+
+// filesTTL bounds how long a pull request's file list (whose merge base can
+// move) is reused; commit-to-commit compares never change and are kept.
+const filesTTL = 2 * time.Minute
 
 // Deps are the injected collaborators.
 type Deps struct {

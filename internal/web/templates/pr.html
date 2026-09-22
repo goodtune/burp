@@ -85,20 +85,20 @@
 
 {{define "pr_toolbar"}}<div id="pr-toolbar" class="pr-toolbar">
   <span class="group">Compare
-    <select data-bind:base data-on:change="@get({{jsStr (print .Path "/view")}})">
+    <select data-bind:base data-indicator:loading data-on:change="@get({{jsStr (print .Path "/view")}})">
       <option value="">{{.PR.BaseRefName}} (PR base)</option>
       {{range .Revisions}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .YourLast}} ★ your last review{{end}}</option>{{end}}
     </select>
     →
-    <select data-bind:head data-on:change="@get({{jsStr (print .Path "/view")}})">
+    <select data-bind:head data-indicator:loading data-on:change="@get({{jsStr (print .Path "/view")}})">
       {{range .Revisions}}{{if ne .Label "your last review"}}<option value="{{.SHA}}">{{.Label}} · {{.Short}}{{if .IsHead}} (latest){{end}}</option>{{end}}{{end}}
     </select>
   </span>
   <span class="seg" role="radiogroup" aria-label="diff view">
-    <label><input type="radio" value="unified" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})">Unified</label>
-    <label><input type="radio" value="split" data-bind:view data-on:change="@get({{jsStr (print .Path "/view")}})">Split</label>
+    <label><input type="radio" value="unified" data-bind:view data-indicator:loading data-on:change="@get({{jsStr (print .Path "/view")}})">Unified</label>
+    <label><input type="radio" value="split" data-bind:view data-indicator:loading data-on:change="@get({{jsStr (print .Path "/view")}})">Split</label>
   </span>
-  <label class="toggle"><input type="checkbox" data-bind:hideReviewed data-on:change="@get({{jsStr (print .Path "/view")}})"> Hide reviewed</label>
+  <label class="toggle"><input type="checkbox" data-bind:hideReviewed data-indicator:loading data-on:change="@get({{jsStr (print .Path "/view")}})"> Hide reviewed</label>
   <span class="spacer"></span>
   <button type="button" class="icon" data-on:click="$helpOpen = true" title="keyboard shortcuts"><kbd>?</kbd></button>
   {{if .CanMerge}}<button type="button" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
@@ -144,34 +144,34 @@
 
 {{define "pr_files"}}<aside id="pr-files" class="pr-files">
   <div class="files-head">Files <span class="muted"><b>{{.ReviewedCount}}/{{.PR.ChangedFiles}}</b> reviewed</span>
-    <span class="progress" title="{{pct .ReviewedCount .PR.ChangedFiles}}% reviewed"><span style="width: {{pct .ReviewedCount .PR.ChangedFiles}}%"></span></span>
+    {{if .ReviewedCount}}<span class="progress" title="{{pct .ReviewedCount .PR.ChangedFiles}}% reviewed"><span style="width: {{pct .ReviewedCount .PR.ChangedFiles}}%"></span></span>{{end}}
   </div>
   {{if .HiddenFiles}}<p class="muted small">{{.HiddenFiles}} reviewed file(s) hidden</p>{{end}}
   <ul>
   {{range .Files}}
     <li class="file{{if .Selected}} selected{{end}}{{if .Reviewed}} reviewed{{end}}">
       <input type="checkbox" title="reviewed" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})">
-      <a href="#" class="path" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><bdi><span class="dir">{{dirname .Path}}</span>{{basename .Path}}</bdi></a>
+      <a href="#" class="path" data-indicator:loading data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><span class="dir"><bdi>{{dirname .Path}}</bdi></span><span class="base">{{basename .Path}}</span></a>
       <span class="file-meta">
-        {{if .Stale}}<span class="stale" title="changed since you reviewed it">!</span>{{end}}
-        {{if .Unresolved}}<span class="unresolved" title="unresolved threads">💬{{.Unresolved}}</span>{{end}}
-        {{if .Drafts}}<span class="draft-badge" title="your drafts">✎{{.Drafts}}</span>{{end}}
+        {{if .Stale}}<span class="stale" title="changed since you reviewed it">{{icon "bang"}}</span>{{end}}
+        {{if .Unresolved}}<span class="unresolved" title="unresolved threads">{{icon "comment"}}{{.Unresolved}}</span>{{end}}
+        {{if .Drafts}}<span class="draft-badge" title="your drafts">{{icon "pencil"}}{{.Drafts}}</span>{{end}}
         <span class="add">+{{.Additions}}</span><span class="del">−{{.Deletions}}</span>
       </span>
     </li>
   {{end}}
   </ul>
   <div class="legend">
-    <span><span class="stale">!</span> changed since reviewed</span> <span><span class="unresolved">💬</span> unresolved</span> <span><span class="draft-badge">✎</span> drafts</span> <span><kbd>?</kbd> shortcuts</span>
+    <span><span class="stale">{{icon "bang"}}</span> changed since reviewed</span> <span><span class="unresolved">{{icon "comment"}}</span> unresolved</span> <span><span class="draft-badge">{{icon "pencil"}}</span> drafts</span> <span><kbd>?</kbd> shortcuts</span>
   </div>
 </aside>{{end}}
 
-{{define "pr_diff"}}<div id="pr-diff" class="pr-diff">
+{{define "pr_diff"}}<div id="pr-diff" class="pr-diff" data-class:loading="$loading">
 {{if .Current}}{{with .Current}}
   <div class="diff-head">
     <span class="path"><b>{{.Path}}</b>{{if .PreviousPath}} <span class="muted">(was {{.PreviousPath}})</span>{{end}} <span class="muted small">{{.Status}} · {{.Index}}/{{.Count}}</span></span>
     <span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span>
-    <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">! changed since</span>{{end}}</label>
+    <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">{{icon "bang"}} changed since</span>{{end}}</label>
     <span class="spacer"></span>
     {{if .Prev}}<button type="button" data-on:click="$file = {{jsStr .Prev}}, @get({{jsStr (print $.Path "/view")}})">‹ prev</button>{{end}}
     {{if .Next}}<button type="button" data-on:click="$file = {{jsStr .Next}}, @get({{jsStr (print $.Path "/view")}})">next ›</button>{{end}}
@@ -217,7 +217,7 @@
 {{define "anchored"}}{{if or .L.Threads .L.Drafts .L.Composer}}<tr class="anchored"><td colspan="{{.Cols}}">
   {{range .L.Threads}}<div id="thread-{{.ID}}" class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}
   {{range .L.Drafts}}<div id="draft-{{.ID}}" class="draft">
-    <div class="draft-head"><b>@{{$.V.Page.User.Login}}</b> <span class="badge">draft ✎</span> <span class="muted small">{{if .StartLine}}lines {{.StartLine}}–{{.Line}}{{else}}line {{.Line}}{{end}} ({{lower .Side}})</span></div>
+    <div class="draft-head"><b>@{{$.V.Page.User.Login}}</b> <span class="badge">{{icon "pencil"}} draft</span> <span class="muted small">{{if .StartLine}}lines {{.StartLine}}–{{.Line}}{{else}}line {{.Line}}{{end}}, {{sideLabel .Side}}</span></div>
     <div class="body">{{.Body}}</div>
     <div class="actions">
       <button type="button" data-on:click="$composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.Line}}, startLine: {{.StartLine}}, draftId: {{jsStr .ID}}, body: {{jsStr .Body}}}, @get({{jsStr (print $.V.Path "/view")}})">Edit</button>
@@ -225,7 +225,7 @@
     </div>
   </div>{{end}}
   {{if .L.Composer}}{{$c := $.V.Sig.Composer}}<div id="composer" class="composer" data-indicator:saving>
-    <div class="hint muted small">{{if $c.DraftID}}Editing draft{{else}}New comment{{end}} · {{if $c.StartLine}}lines {{$c.StartLine}}–{{$c.Line}}{{else}}line {{$c.Line}}{{end}} ({{lower $c.Side}}) · shift-click a line number to extend</div>
+    <div class="composer-head"><b>{{if $c.DraftID}}Editing draft{{else}}New comment{{end}}</b> <span class="muted">{{if $c.StartLine}}lines {{$c.StartLine}}–{{$c.Line}}{{else}}line {{$c.Line}}{{end}}, {{sideLabel $c.Side}}</span><span class="spacer"></span><span class="muted small">shift-click a line number to extend</span></div>
     <textarea rows="4" autofocus placeholder="Leave a comment (Markdown)" data-bind:composer.body></textarea>
     <div class="actions">
       <button type="button" class="primary" data-attr:disabled="$saving" data-on:click="@post({{jsStr (print $.V.Path "/draft")}})">Add to review</button>
