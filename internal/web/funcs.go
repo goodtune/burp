@@ -132,7 +132,7 @@ func checkIcon(state string) template.HTML {
 	case "skipped", "neutral":
 		return `<span class="ck ck-skip" title="skipped">` + icon("dash") + `</span>`
 	default:
-		return `<span class="ck ck-none" title="no checks">` + icon("ring") + `</span>`
+		return `<span class="ck ck-none" title="no checks">` + icon("dot") + `</span>`
 	}
 }
 

@@ -156,7 +156,7 @@
         {{if .Stale}}<span class="stale" title="changed since you reviewed it">{{icon "bang"}}</span>{{end}}
         {{if .Unresolved}}<span class="unresolved" title="unresolved threads">{{icon "comment"}}{{.Unresolved}}</span>{{end}}
         {{if .Drafts}}<span class="draft-badge" title="your drafts">{{icon "pencil"}}{{.Drafts}}</span>{{end}}
-        <span class="add">+{{.Additions}}</span><span class="del">−{{.Deletions}}</span>
+        <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span>
       </span>
     </li>
   {{end}}
@@ -183,6 +183,7 @@
   {{$view := $.Sig.View}}
   {{$cur := .}}
   <div class="diff-scroll"><table class="diff {{$view}}">
+  {{if eq $view "split"}}<colgroup><col class="c-no"><col class="c-code"><col class="c-no"><col class="c-code"></colgroup>{{else}}<colgroup><col class="c-no"><col class="c-no"><col class="c-code"></colgroup>{{end}}
   {{range .Hunks}}
     <tr class="hunk"><td colspan="{{if eq $view "split"}}4{{else}}3{{end}}">{{.Header}}</td></tr>
     {{if eq $view "split"}}
@@ -247,7 +248,7 @@
   {{end}}
   {{if $first}}
   <div class="reply">
-    <button type="button" class="link" style="display:none" data-show="$replyTo != {{$first}}" data-on:click="$replyTo = {{$first}}, $replyBody = ''">Reply</button>
+    <button type="button" style="display:none" data-show="$replyTo != {{$first}}" data-on:click="$replyTo = {{$first}}, $replyBody = ''">Reply</button>
     <div style="display:none" data-show="$replyTo == {{$first}}">
       <textarea rows="3" placeholder="Reply (posted immediately)" data-bind:replyBody></textarea>
       <div class="actions">
