@@ -14,7 +14,7 @@
 {{template "foot" .}}{{end}}
 
 {{define "inbox_sections"}}<div id="inbox-sections">
-  <p class="muted small inbox-status">updated {{relTime .Rendered}} · {{plural .Total "pull request"}}{{if .Filter}} · filter: <code>{{.Filter}}</code>{{end}} <span class="legend-inline">{{stateDot "OPEN" false}} open {{stateDot "OPEN" true}} draft {{stateDot "MERGED" false}} merged {{stateDot "CLOSED" false}} closed <span class="sep">|</span> checks {{checkIcon "success"}} pass {{checkIcon "failure"}} fail {{checkIcon "pending"}} running</span></p>
+  <p class="muted small inbox-status">updated {{relTime .Rendered}} · {{plural .Total "pull request"}}{{if .Filter}} · filter: <code>{{.Filter}}</code>{{end}} <span class="legend-inline">{{stateDot "OPEN" false}} open {{stateDot "OPEN" true}} draft {{stateDot "MERGED" false}} merged {{stateDot "CLOSED" false}} closed <span class="sep">|</span> checks {{checkIcon "success"}} pass {{checkIcon "failure"}} fail {{checkIcon "pending"}} running {{checkIcon ""}} none</span></p>
   {{range .Warnings}}<p class="error-box">{{.}}</p>{{end}}
   {{range .Sections}}
   <details class="section" {{if not .Collapse}}open{{end}}>

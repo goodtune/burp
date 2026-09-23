@@ -72,6 +72,10 @@ type Server struct {
 	// that switching views or files does not re-fetch the diff from GitHub.
 	filesMu    sync.Mutex
 	filesCache map[string]filesEntry
+
+	// assetVer fingerprints the embedded static files so that browsers
+	// refetch them after an upgrade despite the long cache lifetime.
+	assetVer string
 }
 
 type filesEntry struct {
@@ -101,6 +105,7 @@ func New(d Deps) (*Server, error) {
 		cfg: d.Config, store: d.Store, tokens: d.Tokens, oauth: d.OAuth, clients: d.Clients,
 		bus: d.Bus, logger: d.Logger, appSlug: d.AppSlug, started: time.Now(),
 		compareCache: map[string]map[string]bool{},
+		assetVer:     assetVersion(),
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()
@@ -425,8 +430,24 @@ type pageData struct {
 	InstallURL string
 	DevMode    bool
 	Flash      string
+	AssetVer   string
 }
 
 func (s *Server) page(r *http.Request, title string) pageData {
-	return pageData{User: userFrom(r.Context()), Title: title, InstallURL: s.installURL(), DevMode: s.cfg.DevMode}
+	return pageData{User: userFrom(r.Context()), Title: title, InstallURL: s.installURL(), DevMode: s.cfg.DevMode, AssetVer: s.assetVer}
+}
+
+// assetVersion hashes the embedded static files into a short cache key.
+func assetVersion() string {
+	h := sha256.New()
+	_ = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, _ := fs.ReadFile(staticFS, path)
+		h.Write([]byte(path))
+		h.Write(b)
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }

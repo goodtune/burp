@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .Page.Title}}{{.Page.Title}} · {{end}}burp</title>
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v={{.Page.AssetVer}}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<script type="module" src="/static/datastar.js"></script>
+<script type="module" src="/static/datastar.js?v={{.Page.AssetVer}}"></script>
 </head>
 <body>
 <header class="topbar">

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -199,8 +200,20 @@ func (s *Server) buildInbox(ctx context.Context, client *gh.Client, u *store.Use
 		{Key: "merged", Title: "Recently merged", Hint: "merged PRs you were involved in", Collapse: true,
 			Rows: rows(in.Merged, func(gh.PRSummary) string { return "merged" }, false)},
 	}
-	for _, sec := range v.Sections {
-		v.Total += len(sec.Rows)
+	// A pull request belongs to the first section that claims it.
+	seen := map[string]bool{}
+	for i := range v.Sections {
+		kept := v.Sections[i].Rows[:0]
+		for _, row := range v.Sections[i].Rows {
+			k := row.Repository.NameWithOwner + "#" + strconv.Itoa(row.Number)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			kept = append(kept, row)
+		}
+		v.Sections[i].Rows = kept
+		v.Total += len(kept)
 	}
 	return v, nil
 }

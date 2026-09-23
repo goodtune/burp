@@ -64,7 +64,7 @@
   <div class="status-row">
     <details class="checks">
       <summary>{{checkIcon .CheckState}} Checks <span class="count">{{if .Checks}}{{len .Checks}}{{else}}none{{end}}</span>{{with .FailingChecks}} <span class="pill bad">{{plural . "failing"}}</span>{{end}}{{with .PendingChecks}} <span class="pill warn">{{plural . "running"}}</span>{{end}}</summary>
-      <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{end}}</ul>
+      <ul>{{range .Checks}}<li>{{checkIcon .Outcome}} {{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Description}} <span class="muted small">{{.Description}}</span>{{end}}</li>{{else}}<li class="muted">No checks reported for this commit.</li>{{end}}</ul>
     </details>
     <details class="reviews">
       <summary>Reviews {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span>{{end}}{{else}}<span class="muted">none yet</span>{{end}}{{range .PR.RequestedReviewers}}<span class="rv rv-requested" title="review requested">@{{.}} · requested</span>{{end}}</summary>
@@ -72,7 +72,7 @@
     </details>
     <details class="threads">
       <summary>Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</summary>
-      <ul class="threads-list">{{range .PR.ReviewThreads.Nodes}}<li>{{if .IsResolved}}<span class="t-done" title="resolved">{{icon "check"}}</span>{{else}}<span class="t-open" title="unresolved">{{icon "comment"}}</span>{{end}} <a href="#" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})">{{.Path}}{{with .AnchorLine}}:{{.}}{{end}}</a>{{range $i, $c := .Comments.Nodes}}{{if eq $i 0}} <span class="muted small">@{{$c.Author.Login}} · {{relTime $c.CreatedAt}}</span>{{end}}{{end}}{{if .IsOutdated}} <span class="badge">outdated</span>{{end}}</li>{{else}}<li class="muted">No review threads.</li>{{end}}</ul>
+      <ul class="threads-list">{{range .PR.ReviewThreads.Nodes}}<li>{{if .IsResolved}}<span class="t-done" title="resolved">{{icon "check"}}</span>{{else}}<span class="t-open" title="unresolved">{{icon "comment"}}</span>{{end}} <div class="t-body"><a href="#" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})">{{wbrPath .Path}}{{with .AnchorLine}}:{{.}}{{end}}</a>{{if .IsOutdated}} <span class="badge">outdated</span>{{end}}{{range $i, $c := .Comments.Nodes}}{{if eq $i 0}}<div class="muted small t-excerpt"><b>@{{$c.Author.Login}}</b> {{excerpt $c.Body 100}} <span class="faint">· {{relTime $c.CreatedAt}}</span></div>{{end}}{{end}}</div></li>{{else}}<li class="muted">No review threads.</li>{{end}}</ul>
     </details>
   </div>
   <details class="conversation">

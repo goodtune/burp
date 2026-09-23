@@ -27,6 +27,7 @@ func (s *Server) funcs() template.FuncMap {
 		"icon":       icon,
 		"sideLabel":  sideLabel,
 		"wbrPath":    wbrPath,
+		"excerpt":    excerpt,
 		"plural":     plural,
 		"seq": func(n int) []int {
 			out := make([]int, n)
@@ -105,6 +106,8 @@ func icon(name string) template.HTML {
 		path = `<path d="M11.5 2.5l2 2-8 8H3.5v-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>`
 	case "bang":
 		path = `<path d="M8 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12.5" r="1.2" fill="currentColor"/>`
+	case "closed":
+		path = `<circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`
 	case "merge":
 		path = `<circle cx="4" cy="3.5" r="1.5" fill="currentColor"/><circle cx="4" cy="12.5" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/><path d="M4 5v6M4 5c0 3 4 3 6.5 3" fill="none" stroke="currentColor" stroke-width="1.5"/>`
 	default:
@@ -143,6 +146,16 @@ func wbrPath(p string) template.HTML {
 	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(p), "/", "/<wbr>"))
 }
 
+// excerpt flattens markdown-ish text to a single line of at most n runes.
+func excerpt(body string, n int) string {
+	body = strings.Join(strings.Fields(body), " ")
+	r := []rune(body)
+	if len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return body
+}
+
 // sideLabel explains which side of the diff a comment is anchored to.
 func sideLabel(side string) string {
 	if strings.EqualFold(side, "LEFT") {
@@ -157,7 +170,7 @@ func stateDot(state string, draft bool) template.HTML {
 	case state == "MERGED":
 		return `<span class="dot dot-merged" title="merged">` + icon("merge") + `</span>`
 	case state == "CLOSED":
-		return `<span class="dot dot-closed" title="closed">` + icon("x") + `</span>`
+		return `<span class="dot dot-closed" title="closed">` + icon("closed") + `</span>`
 	case draft:
 		return `<span class="dot dot-draft" title="draft">` + icon("ring") + `</span>`
 	default:
