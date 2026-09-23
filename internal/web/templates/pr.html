@@ -72,7 +72,7 @@
     </details>
     <details class="threads">
       <summary>Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</summary>
-      <ul class="threads-list">{{range .PR.ReviewThreads.Nodes}}<li>{{if .IsResolved}}<span class="t-done" title="resolved">{{icon "check"}}</span>{{else}}<span class="t-open" title="unresolved">{{icon "comment"}}</span>{{end}} <div class="t-body"><a href="#" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})">{{wbrPath .Path}}{{with .AnchorLine}}:{{.}}{{end}}</a>{{if .IsOutdated}} <span class="badge">outdated</span>{{end}}{{range $i, $c := .Comments.Nodes}}{{if eq $i 0}}<div class="muted small t-excerpt"><b>@{{$c.Author.Login}}</b> {{excerpt $c.Body 100}} <span class="faint">· {{relTime $c.CreatedAt}}</span></div>{{end}}{{end}}</div></li>{{else}}<li class="muted">No review threads.</li>{{end}}</ul>
+      <ul class="threads-list">{{range .PR.ReviewThreads.Nodes}}<li>{{if .IsResolved}}<span class="t-done" title="resolved">{{icon "check"}}</span>{{else}}<span class="t-open" title="unresolved">{{icon "comment"}}</span>{{end}} <div class="t-body"><a href="#" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})">{{wbrPath .Path}}{{with .AnchorLine}}:{{.}}{{end}}</a>{{if .IsOutdated}} <span class="badge">outdated</span>{{end}}{{range $i, $c := .Comments.Nodes}}{{if eq $i 0}}<div class="muted small t-excerpt"><b>@{{$c.Author.Login}}</b> <span class="faint">{{relTime $c.CreatedAt}} ·</span> {{excerpt $c.Body 100}}</div>{{end}}{{end}}</div></li>{{else}}<li class="muted">No review threads.</li>{{end}}</ul>
     </details>
   </div>
   <details class="conversation">
@@ -203,7 +203,7 @@
         <tr class="row k{{.Kind}}{{if .Selected}} sel{{end}}">
           {{if .OldNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "LEFT" "No" .OldNo "V" $)}}">{{.OldNo}}</td>{{else}}<td class="no"></td>{{end}}
           {{if .NewNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "RIGHT" "No" .NewNo "V" $)}}">{{.NewNo}}</td>{{else}}<td class="no"></td>{{end}}
-          <td class="code"><span class="pfx">{{.Prefix}}</span>{{.Text}}</td>
+          <td class="code"{{with indent .Text}} style="--ind:{{.}}"{{end}}><span class="pfx">{{.Prefix}}</span>{{.Text}}</td>
         </tr>
         {{template "anchored" (dict "L" . "V" $ "Cols" 3)}}
       {{end}}
@@ -218,7 +218,7 @@
 
 {{define "clickexpr"}}evt.shiftKey && $composer.path == {{jsStr .Path}} && $composer.side == {{jsStr .Side}} ? ($composer.startLine = Math.min($composer.line, {{.No}}), $composer.line = Math.max($composer.line, {{.No}})) : ($composer = {path: {{jsStr .Path}}, side: {{jsStr .Side}}, line: {{.No}}, startLine: 0, draftId: '', body: ''}), @get({{jsStr (print .V.Path "/view")}}){{end}}
 
-{{define "cell"}}{{if .No}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{.No}}</td>{{else}}<td class="no k{{.L.Kind}}"></td>{{end}}<td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
+{{define "cell"}}{{if .No}}<td class="no k{{.L.Kind}}{{if .L.Selected}} sel{{end}}" data-on:click="{{template "clickexpr" (dict "Path" .Path "Side" .Side "No" .No "V" .V)}}">{{.No}}</td>{{else}}<td class="no k{{.L.Kind}}"></td>{{end}}<td class="code k{{.L.Kind}}{{if .L.Selected}} sel{{end}}"{{with indent .L.Text}} style="--ind:{{.}}"{{end}}><span class="pfx">{{.L.Prefix}}</span>{{.L.Text}}</td>{{end}}
 
 {{define "anchored"}}{{if or .L.Threads .L.Drafts .L.Composer}}<tr class="anchored"><td colspan="{{.Cols}}">
   {{range .L.Threads}}<div id="thread-{{.ID}}" class="thread{{if .IsResolved}} resolved{{end}}">{{template "thread" (dict "T" . "V" $.V)}}</div>{{end}}
@@ -244,10 +244,11 @@
   <div class="thread-head">
     {{if $t.IsResolved}}<span class="badge ok">resolved{{if $t.ResolvedBy}} by @{{$t.ResolvedBy.Login}}{{end}}</span>{{else}}<span class="badge warn">unresolved</span>{{end}}
     {{if $t.IsOutdated}}<span class="badge">outdated{{if $t.Line}}{{else}} · {{$t.Path}}{{end}}</span>{{end}}
+    {{range $i, $c := $t.Comments.Nodes}}{{if eq $i 0}}<span class="who"><b>@{{$c.Author.Login}}</b> · {{relTime $c.CreatedAt}} <a class="ext small" href="{{$c.URL}}" title="open on GitHub">↗</a></span>{{end}}{{end}}
     {{if $t.ViewerCanResolve}}<button type="button" class="link" data-on:click="$threadId = {{jsStr $t.ID}}, $resolve = {{if $t.IsResolved}}false{{else}}true{{end}}, @post({{jsStr (print $v.Path "/resolve")}})">{{if $t.IsResolved}}Unresolve{{else}}Resolve{{end}}</button>{{end}}
   </div>
   {{range $i, $c := $t.Comments.Nodes}}{{if eq $i 0}}{{$first = $c.DatabaseID}}{{end}}
-  <div class="comment"><div class="comment-head"><b>@{{$c.Author.Login}}</b> <span class="muted small">{{relTime $c.CreatedAt}}</span> <a class="ext small" href="{{$c.URL}}" title="open on GitHub">↗</a></div><div class="md">{{safeHTML $c.BodyHTML}}</div></div>
+  <div class="comment">{{if ne $i 0}}<div class="comment-head"><b>@{{$c.Author.Login}}</b> <span class="muted small">{{relTime $c.CreatedAt}}</span> <a class="ext small" href="{{$c.URL}}" title="open on GitHub">↗</a></div>{{end}}<div class="md">{{safeHTML $c.BodyHTML}}</div></div>
   {{end}}
   {{if $first}}
   <div class="reply">

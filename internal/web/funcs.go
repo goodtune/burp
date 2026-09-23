@@ -28,6 +28,7 @@ func (s *Server) funcs() template.FuncMap {
 		"sideLabel":  sideLabel,
 		"wbrPath":    wbrPath,
 		"excerpt":    excerpt,
+		"indent":     indent,
 		"plural":     plural,
 		"seq": func(n int) []int {
 			out := make([]int, n)
@@ -144,6 +145,26 @@ func checkIcon(state string) template.HTML {
 // separator so long paths wrap at directory boundaries.
 func wbrPath(p string) template.HTML {
 	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(p), "/", "/<wbr>"))
+}
+
+// indent counts the leading indentation of a code line in columns (tab = 4)
+// so wrapped continuation lines can hang under the code, not the margin.
+func indent(text string) int {
+	n := 0
+	for _, r := range text {
+		switch r {
+		case ' ':
+			n++
+		case '\t':
+			n += 4
+		default:
+			if n > 40 {
+				return 40
+			}
+			return n
+		}
+	}
+	return 0
 }
 
 // excerpt flattens markdown-ish text to a single line of at most n runes.
