@@ -26,6 +26,7 @@ func (s *Server) funcs() template.FuncMap {
 		"actionIcon": actionIcon,
 		"icon":       icon,
 		"sideLabel":  sideLabel,
+		"wbrPath":    wbrPath,
 		"plural":     plural,
 		"seq": func(n int) []int {
 			out := make([]int, n)
@@ -134,6 +135,12 @@ func checkIcon(state string) template.HTML {
 	default:
 		return `<span class="ck ck-none" title="no checks">` + icon("dot") + `</span>`
 	}
+}
+
+// wbrPath escapes a path and adds soft break opportunities after each
+// separator so long paths wrap at directory boundaries.
+func wbrPath(p string) template.HTML {
+	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(p), "/", "/<wbr>"))
 }
 
 // sideLabel explains which side of the diff a comment is anchored to.

@@ -70,7 +70,10 @@
       <summary>Reviews {{if .PR.LatestReviews.Nodes}}{{range .PR.LatestReviews.Nodes}}<span class="rv rv-{{lower .State}}" title="{{title .State}}">@{{.Author.Login}}</span>{{end}}{{else}}<span class="muted">none yet</span>{{end}}{{range .PR.RequestedReviewers}}<span class="rv rv-requested" title="review requested">@{{.}} · requested</span>{{end}}</summary>
       <ul>{{range .PR.Reviews.Nodes}}<li><b>@{{.Author.Login}}</b> <span class="muted">{{lower (title .State)}} {{relTime .SubmittedAt}}</span>{{if .BodyHTML}}<div class="md">{{safeHTML .BodyHTML}}</div>{{end}}</li>{{else}}<li class="muted">No reviews yet.</li>{{end}}</ul>
     </details>
-    <span class="threads">Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</span>
+    <details class="threads">
+      <summary>Threads <span class="count">{{.ThreadTotal}}</span> {{if .Unresolved}}<span class="pill warn">{{.Unresolved}} unresolved</span>{{else if .ThreadTotal}}<span class="pill ok">all resolved</span>{{end}}</summary>
+      <ul class="threads-list">{{range .PR.ReviewThreads.Nodes}}<li>{{if .IsResolved}}<span class="t-done" title="resolved">{{icon "check"}}</span>{{else}}<span class="t-open" title="unresolved">{{icon "comment"}}</span>{{end}} <a href="#" data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})">{{.Path}}{{with .AnchorLine}}:{{.}}{{end}}</a>{{range $i, $c := .Comments.Nodes}}{{if eq $i 0}} <span class="muted small">@{{$c.Author.Login}} · {{relTime $c.CreatedAt}}</span>{{end}}{{end}}{{if .IsOutdated}} <span class="badge">outdated</span>{{end}}</li>{{else}}<li class="muted">No review threads.</li>{{end}}</ul>
+    </details>
   </div>
   <details class="conversation">
     <summary>Conversation <span class="count">{{len .PR.Comments.Nodes}}</span></summary>
@@ -151,7 +154,7 @@
   {{range .Files}}
     <li class="file{{if .Selected}} selected{{end}}{{if .Reviewed}} reviewed{{end}}">
       <input type="checkbox" title="reviewed" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})">
-      <a href="#" class="path" data-indicator:loading data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><span class="dir"><bdi>{{dirname .Path}}</bdi></span><span class="base">{{basename .Path}}</span></a>
+      <a href="#" class="path" data-indicator:loading data-on:click__prevent="$file = {{jsStr .Path}}, @get({{jsStr (print $.Path "/view")}})" title="{{.Path}}"><span class="dir">{{wbrPath (dirname .Path)}}</span><span class="base">{{basename .Path}}</span></a>
       <span class="file-meta">
         {{if .Stale}}<span class="stale" title="changed since you reviewed it">{{icon "bang"}}</span>{{end}}
         {{if .Unresolved}}<span class="unresolved" title="unresolved threads">{{icon "comment"}}{{.Unresolved}}</span>{{end}}
@@ -169,7 +172,7 @@
 {{define "pr_diff"}}<div id="pr-diff" class="pr-diff" data-class:loading="$loading">
 {{if .Current}}{{with .Current}}
   <div class="diff-head">
-    <span class="path"><b>{{.Path}}</b>{{if .PreviousPath}} <span class="muted">(was {{.PreviousPath}})</span>{{end}} <span class="muted small">{{.Status}} · {{.Index}}/{{.Count}}</span></span>
+    <span class="path"><b>{{wbrPath .Path}}</b>{{if .PreviousPath}} <span class="muted">(was {{.PreviousPath}})</span>{{end}} <span class="muted small">{{.Status}} · {{.Index}}/{{.Count}}</span></span>
     <span class="stat"><span class="add">+{{.Additions}}</span> <span class="del">−{{.Deletions}}</span></span>
     <span class="spacer"></span>
     <label class="reviewed-toggle"><input type="checkbox" {{if .Reviewed}}checked{{end}} data-on:change="$markPath = {{jsStr .Path}}, $marked = evt.target.checked, @post({{jsStr (print $.Path "/mark")}})"> Reviewed{{if .Stale}} <span class="stale" title="changed since you reviewed">{{icon "bang"}} changed since</span>{{end}}</label>
