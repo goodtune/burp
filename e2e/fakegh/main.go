@@ -21,6 +21,7 @@ var (
 	comments []string
 	replies  []string
 	resolved int
+	viewed   int
 	merged   bool
 )
 
@@ -36,6 +37,7 @@ const prJSON = `{
   "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "me"}}]},
   "latestReviews": {"nodes": []}, "reviews": {"nodes": []},
   "reviewThreads": {"nodes": THREADS},
+  "files": {"pageInfo": {"hasNextPage": false, "endCursor": ""}, "nodes": [{"path": "docs/config.md", "viewerViewedState": "UNVIEWED"}, {"path": "internal/proxy/ratelimit.go", "viewerViewedState": "UNVIEWED"}]},
   "comments": {"nodes": [{"databaseId": 1, "author": {"login": "dave"}, "bodyHTML": "<p>LGTM but please add tests</p>", "createdAt": "2026-09-22T00:00:00Z"}]}
 }`
 
@@ -67,10 +69,10 @@ func main() {
 			w.Write([]byte(`{"access_token":"ghu_tok","refresh_token":"ghr_tok","expires_in":28800,"refresh_token_expires_in":15897600}`))
 			return
 		case r.URL.Path == "/state":
-			fmt.Fprintf(w, "reviews=%d comments=%d replies=%d resolved=%d merged=%v\n%s\n", len(reviews), len(comments), len(replies), resolved, merged, strings.Join(reviews, "\n"))
+			fmt.Fprintf(w, "reviews=%d comments=%d replies=%d resolved=%d viewed=%d merged=%v\n%s\n", len(reviews), len(comments), len(replies), resolved, viewed, merged, strings.Join(reviews, "\n"))
 			return
 		case r.URL.Path == "/reset":
-			head, threads, reviews, comments, replies, resolved, merged = "HEAD", threadsJSON, nil, nil, nil, 0, false
+			head, threads, reviews, comments, replies, resolved, viewed, merged = "HEAD", threadsJSON, nil, nil, nil, 0, 0, false
 			fmt.Fprintln(w, "reset")
 			return
 		case r.URL.Path == "/push":
@@ -95,6 +97,9 @@ func main() {
 				w.Write([]byte(`{"data": {"needsReview": {"nodes": [` + inboxNode + `]}, "returned": {"nodes": []}, "approved": {"nodes": []}, "waiting": {"nodes": []}, "drafts": {"nodes": []}, "merged": {"nodes": []}}}`))
 			case strings.Contains(req.Query, "esolveReviewThread"):
 				resolved++
+				w.Write([]byte(`{"data": {}}`))
+			case strings.Contains(req.Query, "FileAsViewed"):
+				viewed++
 				w.Write([]byte(`{"data": {}}`))
 			case strings.Contains(req.Query, "pullRequest(number"):
 				pr := strings.Replace(prJSON, "THREADS", threads, 1)

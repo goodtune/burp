@@ -187,8 +187,17 @@ query PR($owner: String!, $name: String!, $number: Int!) {
         comments(first: 100) { nodes { id databaseId author { login avatarUrl } body bodyHTML createdAt url } }
       } }
       comments(last: 50) { nodes { id databaseId author { login avatarUrl } body bodyHTML createdAt url } }
+      files(first: 100) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }
     }
   }
+}`
+
+// filesPageQuery continues the per-file viewed state for large pull requests.
+const filesPageQuery = `
+query Files($id: ID!, $after: String!) {
+  node(id: $id) { ... on PullRequest {
+    files(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }
+  } }
 }`
 
 // PullRequest loads the review page model.
@@ -211,7 +220,30 @@ func (c *Client) PullRequest(ctx context.Context, owner, repo string, number int
 	if data.Repository == nil || data.Repository.PullRequest == nil {
 		return nil, &APIError{Status: http.StatusNotFound, Message: "pull request not found"}
 	}
-	return data.Repository.PullRequest, nil
+	pr := data.Repository.PullRequest
+	for i := 0; pr.Files.PageInfo.HasNextPage && i < 30; i++ {
+		var page struct {
+			Node struct {
+				Files FileConnection `json:"files"`
+			} `json:"node"`
+		}
+		if err := c.graphql(ctx, filesPageQuery, map[string]any{"id": pr.ID, "after": pr.Files.PageInfo.EndCursor}, &page); err != nil {
+			break // viewed state is best effort
+		}
+		pr.Files.Nodes = append(pr.Files.Nodes, page.Node.Files.Nodes...)
+		pr.Files.PageInfo = page.Node.Files.PageInfo
+	}
+	return pr, nil
+}
+
+// MarkFileViewed sets or clears GitHub's own "viewed" state for a file on
+// the pull request, so that burp's reviewed marks show up on github.com.
+func (c *Client) MarkFileViewed(ctx context.Context, prNodeID, path string, viewed bool) error {
+	mutation := `mutation($id: ID!, $path: String!) { markFileAsViewed(input: {pullRequestId: $id, path: $path}) { pullRequest { id } } }`
+	if !viewed {
+		mutation = `mutation($id: ID!, $path: String!) { unmarkFileAsViewed(input: {pullRequestId: $id, path: $path}) { pullRequest { id } } }`
+	}
+	return c.graphql(ctx, mutation, map[string]any{"id": prNodeID, "path": path}, nil)
 }
 
 // Files lists the changed files of the pull request with patches.

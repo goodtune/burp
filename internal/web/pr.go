@@ -320,18 +320,11 @@ func (s *Server) handlePRMark(w http.ResponseWriter, r *http.Request) {
 		if path == "" {
 			return nil
 		}
-		if !sig.Marked {
-			return s.store.ClearFileMark(ctx, u.ID, key, path)
+		pr, err := s.pullRequest(ctx, client, u, key)
+		if err != nil {
+			return err
 		}
-		head := sig.Head
-		if head == "" {
-			pr, err := client.PullRequest(ctx, key.Owner, key.Repo, key.Number)
-			if err != nil {
-				return err
-			}
-			head = pr.HeadRefOid
-		}
-		return s.store.SetFileMark(ctx, &store.FileMark{UserID: u.ID, Owner: key.Owner, Repo: key.Repo, Number: key.Number, Path: path, HeadSHA: head})
+		return s.setReviewed(ctx, client, u, key, pr, path, sig.Marked)
 	})
 }
 
@@ -350,7 +343,7 @@ func (s *Server) handlePRDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		head := sig.Head
 		if head == "" {
-			pr, err := client.PullRequest(ctx, key.Owner, key.Repo, key.Number)
+			pr, err := s.pullRequest(ctx, client, u, key)
 			if err != nil {
 				return err
 			}
@@ -389,6 +382,7 @@ func (s *Server) handlePRDraftDelete(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRSubmit(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
+		defer s.forgetPR(u, key)
 		event := sig.ReviewEvent
 		switch event {
 		case "APPROVE", "REQUEST_CHANGES", "COMMENT":
@@ -426,6 +420,7 @@ func (s *Server) handlePRSubmit(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRReply(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
+		defer s.forgetPR(u, key)
 		body := strings.TrimSpace(sig.ReplyBody)
 		if sig.ReplyTo == 0 || body == "" {
 			return errors.New("reply needs some text")
@@ -440,6 +435,7 @@ func (s *Server) handlePRReply(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRResolve(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
+		defer s.forgetPR(u, key)
 		id := sig.ThreadID
 		sig.ThreadID = ""
 		if id == "" {
@@ -451,6 +447,7 @@ func (s *Server) handlePRResolve(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRComment(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
+		defer s.forgetPR(u, key)
 		body := strings.TrimSpace(sig.CommentBody)
 		if body == "" {
 			return errors.New("comment needs some text")
@@ -466,6 +463,7 @@ func (s *Server) handlePRComment(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRMerge(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
+		defer s.forgetPR(u, key)
 		method := sig.MergeMethod
 		switch method {
 		case "merge", "squash", "rebase":
@@ -488,7 +486,8 @@ func (s *Server) handlePRMerge(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePRReady(w http.ResponseWriter, r *http.Request) {
 	s.prAction(w, r, func(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig *prSignals) error {
-		pr, err := client.PullRequest(ctx, key.Owner, key.Repo, key.Number)
+		defer s.forgetPR(u, key)
+		pr, err := s.pullRequest(ctx, client, u, key)
 		if err != nil {
 			return err
 		}
@@ -532,6 +531,7 @@ func (s *Server) handlePRStream(w http.ResponseWriter, r *http.Request) {
 			s.handleAPIError(sse, "pr-notice", err, "")
 			return false
 		}
+		s.rememberPR(u, key, pr)
 		sub.SetTopics(bus.PRTopic(key.Owner, key.Repo, key.Number), bus.SHATopic(pr.HeadRefOid))
 		v := prVersion(pr)
 		if v == last {
@@ -590,8 +590,76 @@ func prVersion(pr *gh.PullRequest) string {
 
 // ---- view building ------------------------------------------------------
 
-func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig prSignals) (*prView, error) {
+// prCacheKey scopes cached pull requests per user (viewer-specific fields).
+func prCacheKey(userID int64, key store.PRKey) string {
+	return fmt.Sprintf("%d:%s/%s#%d", userID, key.Owner, key.Repo, key.Number)
+}
+
+// pullRequest returns the pull request for key, from the per-user cache
+// when it is fresh enough, otherwise from GitHub.
+func (s *Server) pullRequest(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey) (*gh.PullRequest, error) {
+	ck := prCacheKey(u.ID, key)
+	s.prMu.Lock()
+	e, ok := s.prCache[ck]
+	s.prMu.Unlock()
+	if ok && time.Since(e.at) < prTTL {
+		return e.pr, nil
+	}
 	pr, err := client.PullRequest(ctx, key.Owner, key.Repo, key.Number)
+	if err != nil {
+		return nil, err
+	}
+	s.rememberPR(u, key, pr)
+	return pr, nil
+}
+
+// rememberPR stores a freshly fetched pull request for later views.
+func (s *Server) rememberPR(u *store.User, key store.PRKey, pr *gh.PullRequest) {
+	s.prMu.Lock()
+	if s.prCache == nil || len(s.prCache) > 256 {
+		s.prCache = map[string]prEntry{}
+	}
+	s.prCache[prCacheKey(u.ID, key)] = prEntry{pr: pr, at: time.Now()}
+	s.prMu.Unlock()
+}
+
+// forgetPR drops the cached pull request after a mutation so the next
+// view reflects GitHub's state.
+func (s *Server) forgetPR(u *store.User, key store.PRKey) {
+	s.prMu.Lock()
+	delete(s.prCache, prCacheKey(u.ID, key))
+	s.prMu.Unlock()
+}
+
+// setReviewed records a reviewed mark locally and mirrors it to GitHub's
+// per-file viewed state. GitHub failures are logged, not fatal: the local
+// mark is what burp's own UI relies on.
+func (s *Server) setReviewed(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, pr *gh.PullRequest, path string, on bool) error {
+	var err error
+	if on {
+		err = s.store.SetFileMark(ctx, &store.FileMark{UserID: u.ID, Owner: key.Owner, Repo: key.Repo, Number: key.Number, Path: path, HeadSHA: pr.HeadRefOid})
+	} else {
+		err = s.store.ClearFileMark(ctx, u.ID, key, path)
+	}
+	if err != nil {
+		return err
+	}
+	if gerr := client.MarkFileViewed(ctx, pr.ID, path, on); gerr != nil {
+		s.logger.Warn("github viewed state", "path", path, "viewed", on, "error", gerr)
+	} else {
+		state := "UNVIEWED"
+		if on {
+			state = "VIEWED"
+		}
+		s.prMu.Lock()
+		pr.SetViewedState(path, state)
+		s.prMu.Unlock()
+	}
+	return nil
+}
+
+func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig prSignals) (*prView, error) {
+	pr, err := s.pullRequest(ctx, client, u, key)
 	if err != nil {
 		return nil, err
 	}
@@ -683,6 +751,21 @@ func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, 
 				row.Reviewed = false
 			}
 		}
+		// GitHub's own "viewed" checkbox counts too, so marks made on
+		// github.com show up here; DISMISSED means the file changed since.
+		switch pr.ViewedState(f.Path) {
+		case "VIEWED":
+			if !row.Reviewed && !row.Stale {
+				row.Reviewed = true
+				if _, ok := view.Marks[f.Path]; !ok {
+					_ = s.store.SetFileMark(ctx, &store.FileMark{UserID: u.ID, Owner: key.Owner, Repo: key.Repo, Number: key.Number, Path: f.Path, HeadSHA: pr.HeadRefOid})
+				}
+			}
+		case "DISMISSED":
+			if !row.Reviewed {
+				row.Stale = true
+			}
+		}
 		for _, t := range threadsByPath[f.Path] {
 			row.Threads++
 			if !t.IsResolved {
@@ -716,11 +799,11 @@ func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, 
 			if idx >= 0 {
 				row := &all[idx]
 				if row.Reviewed {
-					_ = s.store.ClearFileMark(ctx, u.ID, key, row.Path)
+					_ = s.setReviewed(ctx, client, u, key, pr, row.Path, false)
 					row.Reviewed = false
 					view.ReviewedCount--
 				} else {
-					_ = s.store.SetFileMark(ctx, &store.FileMark{UserID: u.ID, Owner: key.Owner, Repo: key.Repo, Number: key.Number, Path: row.Path, HeadSHA: pr.HeadRefOid})
+					_ = s.setReviewed(ctx, client, u, key, pr, row.Path, true)
 					row.Reviewed, row.Stale = true, false
 					view.ReviewedCount++
 				}

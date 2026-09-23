@@ -31,6 +31,7 @@ type fakeGitHub struct {
 	comments []string
 	replies  []string
 	resolved []string
+	viewed   []string
 	merged   bool
 	head     string
 	threads  string
@@ -48,6 +49,7 @@ const prJSON = `{
   "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "me"}}]},
   "latestReviews": {"nodes": []}, "reviews": {"nodes": []},
   "reviewThreads": {"nodes": THREADS},
+  "files": {"pageInfo": {"hasNextPage": false, "endCursor": ""}, "nodes": [{"path": "docs/config.md", "viewerViewedState": "UNVIEWED"}, {"path": "internal/proxy/ratelimit.go", "viewerViewedState": "UNVIEWED"}]},
   "comments": {"nodes": [{"databaseId": 1, "author": {"login": "dave"}, "bodyHTML": "<p>LGTM but</p>", "createdAt": "2026-01-02T00:00:00Z"}]}
 }`
 
@@ -86,6 +88,9 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			switch {
 			case strings.Contains(req.Query, "needsReview: search"):
 				w.Write([]byte(`{"data": {"needsReview": {"nodes": [` + inboxNode + `]}, "returned": {"nodes": []}, "approved": {"nodes": []}, "waiting": {"nodes": []}, "drafts": {"nodes": []}, "merged": {"nodes": []}}}`))
+			case strings.Contains(req.Query, "FileAsViewed"):
+				f.viewed = append(f.viewed, req.Query[:80])
+				w.Write([]byte(`{"data": {}}`))
 			case strings.Contains(req.Query, "resolveReviewThread") || strings.Contains(req.Query, "unresolveReviewThread"):
 				f.resolved = append(f.resolved, req.Query[:20])
 				w.Write([]byte(`{"data": {}}`))
@@ -482,6 +487,9 @@ func TestPRPageAndActions(t *testing.T) {
 	marks, _ := h.store.ListFileMarks(ctx, 77, store.PRKey{Owner: "acme", Repo: "api", Number: 5})
 	if len(marks) != 1 || marks[0].HeadSHA != "HEAD" {
 		t.Fatalf("marks %+v", marks)
+	}
+	if len(h.gh.viewed) != 1 || !strings.Contains(h.gh.viewed[0], "markFileAsViewed") {
+		t.Fatalf("github viewed state not mirrored: %v", h.gh.viewed)
 	}
 
 	// Keyboard: n jumps to the next unreviewed file (docs/b.md).

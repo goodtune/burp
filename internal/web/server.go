@@ -73,10 +73,24 @@ type Server struct {
 	filesMu    sync.Mutex
 	filesCache map[string]filesEntry
 
+	// prCache keeps each user's last pull request query for a short while
+	// so that switching files or views does not wait on GitHub.
+	prMu    sync.Mutex
+	prCache map[string]prEntry
+
 	// assetVer fingerprints the embedded static files so that browsers
 	// refetch them after an upgrade despite the long cache lifetime.
 	assetVer string
 }
+
+type prEntry struct {
+	pr *gh.PullRequest
+	at time.Time
+}
+
+// prTTL bounds how long a cached pull request query is reused for views.
+// Mutations and webhook events invalidate it earlier.
+const prTTL = 45 * time.Second
 
 type filesEntry struct {
 	files []gh.ChangedFile

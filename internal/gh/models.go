@@ -196,6 +196,45 @@ type PullRequest struct {
 	Comments struct {
 		Nodes []Comment `json:"nodes"`
 	} `json:"comments"`
+	Files FileConnection `json:"files"`
+}
+
+// FileConnection carries GitHub's per-file viewed state for the viewer.
+type FileConnection struct {
+	PageInfo struct {
+		HasNextPage bool   `json:"hasNextPage"`
+		EndCursor   string `json:"endCursor"`
+	} `json:"pageInfo"`
+	Nodes []FileState `json:"nodes"`
+}
+
+// FileState is one entry of PullRequest.files.
+type FileState struct {
+	Path string `json:"path"`
+	// ViewerViewedState is VIEWED, UNVIEWED or DISMISSED (viewed, but the
+	// file changed afterwards).
+	ViewerViewedState string `json:"viewerViewedState"`
+}
+
+// ViewedState returns GitHub's viewed state for path ("" when unknown).
+func (p *PullRequest) ViewedState(path string) string {
+	for i := range p.Files.Nodes {
+		if p.Files.Nodes[i].Path == path {
+			return p.Files.Nodes[i].ViewerViewedState
+		}
+	}
+	return ""
+}
+
+// SetViewedState updates the cached viewed state for path in place.
+func (p *PullRequest) SetViewedState(path, state string) {
+	for i := range p.Files.Nodes {
+		if p.Files.Nodes[i].Path == path {
+			p.Files.Nodes[i].ViewerViewedState = state
+			return
+		}
+	}
+	p.Files.Nodes = append(p.Files.Nodes, FileState{Path: path, ViewerViewedState: state})
 }
 
 // Commit is a PR commit (a "revision").

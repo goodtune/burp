@@ -60,6 +60,7 @@ test('clicking a line number opens the composer and saves a draft', async () => 
 test('reviewed marks and keyboard navigation', async () => {
   await page.locator('#pr-files li.file').first().locator('input[type=checkbox]').check();
   await expect(page.locator('#pr-files .files-head b')).toHaveText('1/2');
+  await expect.poll(async () => (await (await fetch(fake + '/state')).text())).toContain('viewed=1');
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('k');
   await expect(page.locator('#pr-diff .diff-head b')).toHaveText('docs/config.md');
