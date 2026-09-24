@@ -324,7 +324,11 @@ func (s *Server) handlePRMark(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		return s.setReviewed(ctx, client, u, key, pr, path, sig.Marked)
+		ghErr, err := s.setReviewed(ctx, client, u, key, pr, path, sig.Marked)
+		if ghErr != nil {
+			sig.Notice = viewedSyncNotice(ghErr)
+		}
+		return err
 	})
 }
 
@@ -632,30 +636,39 @@ func (s *Server) forgetPR(u *store.User, key store.PRKey) {
 }
 
 // setReviewed records a reviewed mark locally and mirrors it to GitHub's
-// per-file viewed state. GitHub failures are logged, not fatal: the local
-// mark is what burp's own UI relies on.
-func (s *Server) setReviewed(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, pr *gh.PullRequest, path string, on bool) error {
-	var err error
+// per-file viewed state. The local mark is what burp's own UI relies on, so
+// a GitHub refusal does not fail the call; it is logged and returned as
+// ghErr so the page can say that github.com was not updated.
+func (s *Server) setReviewed(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, pr *gh.PullRequest, path string, on bool) (ghErr error, err error) {
 	if on {
 		err = s.store.SetFileMark(ctx, &store.FileMark{UserID: u.ID, Owner: key.Owner, Repo: key.Repo, Number: key.Number, Path: path, HeadSHA: pr.HeadRefOid})
 	} else {
 		err = s.store.ClearFileMark(ctx, u.ID, key, path)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if gerr := client.MarkFileViewed(ctx, pr.ID, path, on); gerr != nil {
-		s.logger.Warn("github viewed state", "path", path, "viewed", on, "error", gerr)
-	} else {
-		state := "UNVIEWED"
-		if on {
-			state = "VIEWED"
-		}
-		s.prMu.Lock()
-		pr.SetViewedState(path, state)
-		s.prMu.Unlock()
+	if ghErr = client.MarkFileViewed(ctx, pr.ID, path, on); ghErr != nil {
+		s.logger.Warn("github viewed state", "path", path, "viewed", on, "error", ghErr)
+		return ghErr, nil
 	}
-	return nil
+	state := "UNVIEWED"
+	if on {
+		state = "VIEWED"
+	}
+	s.prMu.Lock()
+	pr.SetViewedState(path, state)
+	s.prMu.Unlock()
+	return nil, nil
+}
+
+// viewedSyncNotice explains a refused viewed-state update in user terms.
+func viewedSyncNotice(err error) string {
+	msg := userMessage(err)
+	if strings.Contains(msg, "not accessible by integration") {
+		msg = "the GitHub App needs the \"Pull requests: read and write\" permission (and the installation must have accepted it)"
+	}
+	return "Marked here, but GitHub's \"viewed\" state was not updated: " + msg
 }
 
 func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, key store.PRKey, sig prSignals) (*prView, error) {
@@ -798,12 +811,14 @@ func (s *Server) buildPR(ctx context.Context, client *gh.Client, u *store.User, 
 		case "r":
 			if idx >= 0 {
 				row := &all[idx]
+				ghErr, _ := s.setReviewed(ctx, client, u, key, pr, row.Path, !row.Reviewed)
+				if ghErr != nil {
+					view.Sig.Notice = viewedSyncNotice(ghErr)
+				}
 				if row.Reviewed {
-					_ = s.setReviewed(ctx, client, u, key, pr, row.Path, false)
 					row.Reviewed = false
 					view.ReviewedCount--
 				} else {
-					_ = s.setReviewed(ctx, client, u, key, pr, row.Path, true)
 					row.Reviewed, row.Stale = true, false
 					view.ReviewedCount++
 				}

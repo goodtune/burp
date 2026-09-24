@@ -25,16 +25,17 @@ import (
 
 // fakeGitHub is a scripted GitHub for the web handlers.
 type fakeGitHub struct {
-	mu       sync.Mutex
-	srv      *httptest.Server
-	reviews  []map[string]any
-	comments []string
-	replies  []string
-	resolved []string
-	viewed   []string
-	merged   bool
-	head     string
-	threads  string
+	mu        sync.Mutex
+	srv       *httptest.Server
+	reviews   []map[string]any
+	comments  []string
+	replies   []string
+	resolved  []string
+	viewed    []string
+	viewedErr bool
+	merged    bool
+	head      string
+	threads   string
 }
 
 const prJSON = `{
@@ -90,6 +91,10 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 				w.Write([]byte(`{"data": {"needsReview": {"nodes": [` + inboxNode + `]}, "returned": {"nodes": []}, "approved": {"nodes": []}, "waiting": {"nodes": []}, "drafts": {"nodes": []}, "merged": {"nodes": []}}}`))
 			case strings.Contains(req.Query, "FileAsViewed"):
 				f.viewed = append(f.viewed, req.Query[:80])
+				if f.viewedErr {
+					w.Write([]byte(`{"data": null, "errors": [{"type": "FORBIDDEN", "message": "Resource not accessible by integration"}]}`))
+					return
+				}
 				w.Write([]byte(`{"data": {}}`))
 			case strings.Contains(req.Query, "resolveReviewThread") || strings.Contains(req.Query, "unresolveReviewThread"):
 				f.resolved = append(f.resolved, req.Query[:20])
@@ -491,6 +496,16 @@ func TestPRPageAndActions(t *testing.T) {
 	if len(h.gh.viewed) != 1 || !strings.Contains(h.gh.viewed[0], "markFileAsViewed") {
 		t.Fatalf("github viewed state not mirrored: %v", h.gh.viewed)
 	}
+
+	// A GitHub refusal keeps the local mark and tells the user on the page.
+	h.gh.viewedErr = true
+	resp = h.request(http.MethodPost, "/pr/acme/api/5/mark", map[string]any{"file": "docs/b.md", "markPath": "docs/b.md", "marked": true, "head": "HEAD"}, true)
+	out = joinEvents(readSSE(t, resp, 6, 3*time.Second))
+	h.gh.viewedErr = false
+	if !strings.Contains(out, "<b>2/2</b> reviewed") || !strings.Contains(out, "Pull requests: read and write") {
+		t.Fatalf("refused viewed state: %s", out)
+	}
+	_ = h.store.ClearFileMark(ctx, 77, store.PRKey{Owner: "acme", Repo: "api", Number: 5}, "docs/b.md")
 
 	// Keyboard: n jumps to the next unreviewed file (docs/b.md).
 	resp = h.request(http.MethodPost, "/pr/acme/api/5/key", map[string]any{"file": "a.go", "key": "n"}, true)

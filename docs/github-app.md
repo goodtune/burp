@@ -23,12 +23,19 @@ Repository permissions:
 
 | Permission | Access | Why |
 |---|---|---|
-| Pull requests | Read and write | list, review, comment, merge |
+| Pull requests | Read and write | list, review, comment, merge, mirror "viewed" marks |
 | Contents | Read and write | merge pull requests, compare commits |
 | Checks | Read | check runs in the header |
 | Commit statuses | Read | legacy statuses |
 | Metadata | Read | mandatory |
 | Issues | Read and write | conversation comments (PR comments are issue comments) |
+
+Reviewed marks are mirrored to GitHub's per-file "Viewed" checkbox with
+the `markFileAsViewed` mutation. If GitHub answers "Resource not accessible
+by integration", the App is missing Pull requests write access, or the
+installation has not accepted an updated permission set yet (owners are
+asked to approve permission changes under the installation's settings).
+burp keeps its own mark either way and says so on the page.
 
 Account permissions: none. Because burp acts as the user, the effective
 permissions are the intersection of the App's permissions and what the user
