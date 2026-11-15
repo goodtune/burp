@@ -50,7 +50,30 @@ type Config struct {
 	Store  Store
 	Vault  Vault
 	ACME   ACME
+	GHP    GHP
 }
+
+// GHP holds settings for receiving webhooks from a ghp server's stored
+// webhook stream (GET /api/webhooks/stream) instead of, or as well as,
+// directly from GitHub. ghp verifies each delivery's signature before
+// storing it.
+type GHP struct {
+	// URL is the ghp server's management URL. Empty disables ghp.
+	URL string
+	// Token is a ghp admin session token, sent as a bearer token.
+	Token string
+	// TokenCommand is a shell command that prints the token. It runs on
+	// every connection, so a renewed token is picked up without a restart.
+	TokenCommand string
+	// Filter is the NATS subject filter for the deliveries to receive.
+	Filter string
+	// CAFile is an optional PEM bundle trusted for the ghp server, in
+	// addition to the system roots.
+	CAFile string
+}
+
+// Enabled reports whether burp should subscribe to ghp.
+func (g GHP) Enabled() bool { return g.URL != "" }
 
 // ACME holds automatic TLS settings. When Directory is set, burp serves
 // HTTPS on Listen with certificates obtained from that ACME directory (for
@@ -317,6 +340,30 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		if a.CAFile != "" {
 			if _, serr := os.Stat(a.CAFile); serr != nil {
 				errs = append(errs, fmt.Errorf("BURP_ACME_CA_FILE: %w", serr))
+			}
+		}
+	}
+
+	// ghp.
+	h := &cfg.GHP
+	h.URL = strings.TrimRight(env("GHP_URL", ""), "/")
+	h.Token = env("GHP_TOKEN", "")
+	h.TokenCommand = env("GHP_TOKEN_COMMAND", "")
+	h.Filter = env("GHP_FILTER", "github.webhooks.>")
+	h.CAFile = env("GHP_CA_FILE", "")
+	if h.Enabled() {
+		if hu, herr := url.Parse(h.URL); herr != nil || (hu.Scheme != "https" && hu.Scheme != "http") || hu.Host == "" {
+			errs = append(errs, errors.New("BURP_GHP_URL must be an absolute http(s) URL"))
+		}
+		switch {
+		case h.Token == "" && h.TokenCommand == "":
+			errs = append(errs, errors.New("BURP_GHP_URL needs BURP_GHP_TOKEN or BURP_GHP_TOKEN_COMMAND"))
+		case h.Token != "" && h.TokenCommand != "":
+			errs = append(errs, errors.New("set BURP_GHP_TOKEN or BURP_GHP_TOKEN_COMMAND, not both"))
+		}
+		if h.CAFile != "" {
+			if _, serr := os.Stat(h.CAFile); serr != nil {
+				errs = append(errs, fmt.Errorf("BURP_GHP_CA_FILE: %w", serr))
 			}
 		}
 	}

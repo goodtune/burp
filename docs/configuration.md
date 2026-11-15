@@ -63,6 +63,36 @@ burp acts as the user for every review operation, so the private key is only
 needed for App-level metadata. Everything else uses the OAuth client id and
 secret.
 
+## Webhooks from ghp
+
+burp can take webhook deliveries from a [ghp](https://github.com/goodtune/ghp)
+server instead of, or as well as, directly from GitHub at
+`/webhooks/github`. ghp verifies each delivery's signature, stores it in NATS
+JetStream and serves it over server-sent events at
+`GET /api/webhooks/stream`. burp keeps one stream open, reconnects with
+backoff and resumes after the last delivery it saw. Use it when GitHub can't
+reach burp, for example on a private network.
+
+| Variable | Default | Description |
+|---|---|---|
+| `BURP_GHP_URL` | | ghp management URL, e.g. `https://ghp.example.com`. Setting it turns the subscription on. |
+| `BURP_GHP_TOKEN` | | A ghp **admin** session token (from `ghp auth login`). |
+| `BURP_GHP_TOKEN_COMMAND` | | Alternative to `BURP_GHP_TOKEN`: a shell command that prints the token, e.g. `dotvault kv get --field user_token ghp`. It runs on every connection, so a renewed token is used without a restart and nothing is written to disk. |
+| `BURP_GHP_FILTER` | `github.webhooks.>` | NATS subject filter for the deliveries to receive. See ghp's webhook docs for the subject layout. |
+| `BURP_GHP_CA_FILE` | | PEM bundle to trust for the ghp server, in addition to the system roots. |
+
+Set exactly one of `BURP_GHP_TOKEN` and `BURP_GHP_TOKEN_COMMAND`. burp
+starts from new deliveries; it does not replay ghp's stored log, because
+every page fetches its state from GitHub when it loads. A delivery reaches
+burp whichever GitHub App ghp received it for. burp uses deliveries only as
+a signal to re-fetch, as the viewing user, the pages they affect, and it
+logs events it has no use for at debug level. If GitHub also delivers
+directly to `/webhooks/github`, the duplicate re-renders are merged by the
+usual debounce.
+
+The stream needs an admin session because ghp has no narrower credential
+for webhook subscriptions yet.
+
 ## Storage
 
 | Variable | Default | Description |

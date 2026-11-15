@@ -26,12 +26,18 @@ func ParseWebhook(r *http.Request, secret string) (*Delivery, error) {
 	if err != nil {
 		return nil, fmt.Errorf("validating webhook: %w", err)
 	}
-	event := ghub.WebHookType(r)
-	d := &Delivery{ID: ghub.DeliveryID(r), Event: event}
+	return ParseDelivery(ghub.DeliveryID(r), ghub.WebHookType(r), payload), nil
+}
+
+// ParseDelivery turns an already verified JSON payload into a Delivery. It
+// serves deliveries that reach burp other than by HTTP, such as from ghp's
+// stored webhook stream, where ghp has checked the signature.
+func ParseDelivery(id, event string, payload []byte) *Delivery {
+	d := &Delivery{ID: id, Event: event}
 	parsed, err := ghub.ParseWebHook(event, payload)
 	if err != nil {
 		// Unknown event types are fine: acknowledge and ignore.
-		return d, nil
+		return d
 	}
 	seen := map[string]struct{}{}
 	add := func(topics ...string) {
@@ -120,5 +126,5 @@ func ParseWebhook(r *http.Request, secret string) (*Delivery, error) {
 		d.Action = e.GetAction()
 	case *ghub.PingEvent:
 	}
-	return d, nil
+	return d
 }

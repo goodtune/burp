@@ -397,11 +397,22 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid webhook", http.StatusBadRequest)
 		return
 	}
+	s.PublishDelivery(d, "http")
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// PublishDelivery re-renders the pages a webhook delivery affects. source
+// names where it came from ("http" for /webhooks/github, "ghp" for ghp's
+// stream) in the log.
+func (s *Server) PublishDelivery(d *gh.Delivery, source string) {
 	for _, topic := range d.Topics {
 		s.bus.Publish(bus.Event{Topic: topic, Kind: d.Event, Action: d.Action})
 	}
-	s.logger.Info("webhook", "event", d.Event, "action", d.Action, "repo", d.Repo, "delivery", d.ID, "topics", len(d.Topics))
-	w.WriteHeader(http.StatusAccepted)
+	level := slog.LevelInfo
+	if len(d.Topics) == 0 {
+		level = slog.LevelDebug // events burp has no use for, common on ghp
+	}
+	s.logger.Log(context.Background(), level, "webhook", "source", source, "event", d.Event, "action", d.Action, "repo", d.Repo, "delivery", d.ID, "topics", len(d.Topics))
 }
 
 // installURL is where users go to install the App.

@@ -28,9 +28,11 @@ import (
 	"github.com/goodtune/burp/internal/config"
 	"github.com/goodtune/burp/internal/crypto"
 	"github.com/goodtune/burp/internal/gh"
+	"github.com/goodtune/burp/internal/ghp"
 	"github.com/goodtune/burp/internal/store"
 	"github.com/goodtune/burp/internal/store/sqlstore"
 	"github.com/goodtune/burp/internal/store/vaultstore"
+	"github.com/goodtune/burp/internal/tlsutil"
 	"github.com/goodtune/burp/internal/web"
 )
 
@@ -218,6 +220,24 @@ func serve() error {
 	srv, err := web.New(web.Deps{Config: cfg, Store: st, Tokens: tokens, OAuth: oauth, Clients: clients, Bus: b, Logger: logger, AppSlug: slug})
 	if err != nil {
 		return err
+	}
+
+	// Webhook deliveries from ghp's stored stream, alongside (or instead of)
+	// direct deliveries to /webhooks/github.
+	if cfg.GHP.Enabled() {
+		hc, err := tlsutil.HTTPClient(cfg.GHP.CAFile, 0)
+		if err != nil {
+			return fmt.Errorf("ghp: %w", err)
+		}
+		token := ghp.StaticToken(cfg.GHP.Token)
+		if cfg.GHP.TokenCommand != "" {
+			token = ghp.CommandToken(cfg.GHP.TokenCommand)
+		}
+		sub := &ghp.Subscriber{
+			URL: cfg.GHP.URL, Filter: cfg.GHP.Filter, Token: token, HTTPClient: hc, Logger: logger,
+			Handle: func(d *gh.Delivery) { srv.PublishDelivery(d, "ghp") },
+		}
+		go sub.Run(ctx)
 	}
 
 	// Periodic cleanup of expired sessions and OAuth states.

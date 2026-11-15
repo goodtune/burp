@@ -217,3 +217,63 @@ func TestACMEErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestGHPDisabledByDefault(t *testing.T) {
+	cfg, err := LoadFrom(envFrom(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GHP.Enabled() {
+		t.Fatalf("ghp enabled without a URL: %+v", cfg.GHP)
+	}
+}
+
+func TestGHP(t *testing.T) {
+	m := minimal()
+	m["BURP_GHP_URL"] = "https://ghp.example.com/"
+	m["BURP_GHP_TOKEN_COMMAND"] = "dotvault kv get --field user_token ghp"
+	cfg, err := LoadFrom(envFrom(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := cfg.GHP
+	if !g.Enabled() || g.URL != "https://ghp.example.com" || g.TokenCommand != "dotvault kv get --field user_token ghp" {
+		t.Fatalf("%+v", g)
+	}
+	if g.Filter != "github.webhooks.>" {
+		t.Fatalf("filter default %q", g.Filter)
+	}
+}
+
+func TestGHPErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		mut  func(map[string]string)
+		want string
+	}{
+		{"no token", func(m map[string]string) {}, "BURP_GHP_TOKEN or BURP_GHP_TOKEN_COMMAND"},
+		{"both tokens", func(m map[string]string) {
+			m["BURP_GHP_TOKEN"] = "t"
+			m["BURP_GHP_TOKEN_COMMAND"] = "echo t"
+		}, "not both"},
+		{"bad url", func(m map[string]string) {
+			m["BURP_GHP_TOKEN"] = "t"
+			m["BURP_GHP_URL"] = "ghp.example.com"
+		}, "BURP_GHP_URL must be an absolute http(s) URL"},
+		{"missing ca file", func(m map[string]string) {
+			m["BURP_GHP_TOKEN"] = "t"
+			m["BURP_GHP_CA_FILE"] = "/nonexistent/ca.pem"
+		}, "BURP_GHP_CA_FILE"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := minimal()
+			m["BURP_GHP_URL"] = "https://ghp.example.com"
+			tc.mut(m)
+			_, err := LoadFrom(envFrom(m))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

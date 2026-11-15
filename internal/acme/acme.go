@@ -9,7 +9,6 @@ package acme
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,6 +22,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/goodtune/burp/internal/config"
+	"github.com/goodtune/burp/internal/tlsutil"
 )
 
 // New builds a certificate manager for cfg. It does not contact the ACME
@@ -37,9 +37,9 @@ func New(cfg config.ACME) (*autocert.Manager, error) {
 	if err := os.MkdirAll(cfg.CacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("acme: cache dir: %w", err)
 	}
-	hc, err := httpClient(cfg.CAFile)
+	hc, err := tlsutil.HTTPClient(cfg.CAFile, time.Minute)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("acme: %w", err)
 	}
 	return &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
@@ -48,26 +48,6 @@ func New(cfg config.ACME) (*autocert.Manager, error) {
 		Email:      cfg.Email,
 		Client:     &acme.Client{DirectoryURL: cfg.Directory, HTTPClient: hc},
 	}, nil
-}
-
-// httpClient trusts the system roots plus the PEM bundle at caFile, if any.
-func httpClient(caFile string) (*http.Client, error) {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	if caFile != "" {
-		pem, err := os.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("acme: CA file: %w", err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil || pool == nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("acme: CA file %s holds no PEM certificates", caFile)
-		}
-		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
-	}
-	return &http.Client{Transport: tr, Timeout: time.Minute}, nil
 }
 
 // Warm obtains (or loads from the cache) the certificate for every domain

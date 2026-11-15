@@ -118,3 +118,27 @@ func TestParseWebhookOtherEvents(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDelivery(t *testing.T) {
+	payload := []byte(`{"action":"submitted","review":{"user":{"login":"carol"}},
+		"pull_request":{"number":7,"user":{"login":"alice"},"head":{"sha":"abc"}},
+		"repository":{"name":"api","full_name":"acme/api","owner":{"login":"acme"}}}`)
+	d := ParseDelivery("guid-1", "pull_request_review", payload)
+	if d.ID != "guid-1" || d.Action != "submitted" || d.Repo != "acme/api" {
+		t.Fatalf("%+v", d)
+	}
+	want := map[string]bool{"pr:acme/api#7": false, "user:carol": false}
+	for _, topic := range d.Topics {
+		if _, ok := want[topic]; ok {
+			want[topic] = true
+		}
+	}
+	for topic, seen := range want {
+		if !seen {
+			t.Fatalf("missing topic %s in %v", topic, d.Topics)
+		}
+	}
+	if d := ParseDelivery("guid-2", "workflow_job", []byte(`{}`)); len(d.Topics) != 0 {
+		t.Fatalf("events burp does not use publish nothing: %v", d.Topics)
+	}
+}
