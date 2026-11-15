@@ -191,7 +191,7 @@
     <tr class="hunk"><td colspan="{{if eq $view "split"}}4{{else}}3{{end}}">{{.Header}}</td></tr>
     {{if eq $view "split"}}
       {{range .Split}}
-        <tr class="row">
+        <tr class="ln">
           {{if .Left}}{{template "cell" (dict "L" .Left "Side" "LEFT" "No" .Left.OldNo "V" $ "Path" $cur.Path)}}{{else}}<td class="no"></td><td class="code empty"></td>{{end}}
           {{if .Right}}{{template "cell" (dict "L" .Right "Side" "RIGHT" "No" .Right.NewNo "V" $ "Path" $cur.Path)}}{{else}}<td class="no"></td><td class="code empty"></td>{{end}}
         </tr>
@@ -200,7 +200,7 @@
       {{end}}
     {{else}}
       {{range .Unified}}
-        <tr class="row k{{.Kind}}{{if .Selected}} sel{{end}}">
+        <tr class="ln k{{.Kind}}{{if .Selected}} sel{{end}}">
           {{if .OldNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "LEFT" "No" .OldNo "V" $)}}">{{.OldNo}}</td>{{else}}<td class="no"></td>{{end}}
           {{if .NewNo}}<td class="no" data-on:click="{{template "clickexpr" (dict "Path" $cur.Path "Side" "RIGHT" "No" .NewNo "V" $)}}">{{.NewNo}}</td>{{else}}<td class="no"></td>{{end}}
           <td class="code"{{with indent .Text}} style="--ind:{{.}}"{{end}}><span class="pfx">{{.Prefix}}</span>{{.Text}}</td>

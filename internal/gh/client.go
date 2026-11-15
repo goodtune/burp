@@ -156,7 +156,9 @@ func (c *Client) Inbox(ctx context.Context, filter string) (*Inbox, error) {
 
 	in := &Inbox{}
 	var firstErr error
-	failed := 0
+	failed, hiddenChecks := 0, 0
+	var messages []string
+	count := map[string]int{}
 	for i, sec := range inboxSections {
 		r := results[i]
 		*sec.dst(in) = onlyPRs(r.nodes)
@@ -169,7 +171,14 @@ func (c *Client) Inbox(ctx context.Context, filter string) (*Inbox, error) {
 		var ge GraphQLErrors
 		if errors.As(r.err, &ge) {
 			for _, e := range ge {
-				in.Warnings = append(in.Warnings, e.Message)
+				if e.forbiddenCommit() {
+					hiddenChecks++ // one per PR: the path ends at that PR's commits
+					continue
+				}
+				if count[e.Message] == 0 {
+					messages = append(messages, e.Message)
+				}
+				count[e.Message]++
 			}
 			continue
 		}
@@ -181,6 +190,17 @@ func (c *Client) Inbox(ctx context.Context, filter string) (*Inbox, error) {
 	}
 	if failed == len(inboxSections) {
 		return nil, firstErr
+	}
+	if hiddenChecks > 0 {
+		in.Warnings = append(in.Warnings, fmt.Sprintf("Check status is hidden on %d pull requests: "+
+			"the burp GitHub App may not read commits in their repositories. Give the App read access to "+
+			"Contents, Checks and Commit statuses, then approve the new permissions on its installation.", hiddenChecks))
+	}
+	for _, m := range messages {
+		if n := count[m]; n > 1 {
+			m = fmt.Sprintf("%s (%d times)", m, n)
+		}
+		in.Warnings = append(in.Warnings, m)
 	}
 	return in, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -362,5 +363,42 @@ func TestSplitRepo(t *testing.T) {
 	}
 	if prRef("a", "b", 1) != "a/b#1" {
 		t.Fatal("prRef")
+	}
+}
+
+// Without Contents/Checks/Commit statuses permission GitHub refuses the
+// commit of every PR in a private repository, one error per PR. That must
+// read as one explanation, not a wall of identical errors.
+func TestInboxForbiddenChecksCollapse(t *testing.T) {
+	f := newFakeGitHub(t)
+	forbidden := func(i int) string {
+		return fmt.Sprintf(`{"type":"FORBIDDEN","message":"Resource not accessible by integration","path":["search","nodes",%d,"commits","nodes"]}`, i)
+	}
+	f.graphql = func(query string, vars map[string]any) (int, string) {
+		q, _ := vars["q"].(string)
+		switch {
+		case strings.Contains(q, "review-requested:@me"):
+			return 200, `{"data": {"search": {"nodes": [` + prNode + `,` + prNode + `]}}, "errors": [` + forbidden(0) + `,` + forbidden(1) + `]}`
+		case strings.Contains(q, "is:merged"):
+			return 200, `{"data": {"search": {"nodes": [` + prNode + `]}}, "errors": [` + forbidden(0) + `,
+				{"type":"RATE_LIMITED","message":"slow down"},{"type":"RATE_LIMITED","message":"slow down"}]}`
+		}
+		return 200, `{"data": {"search": {"nodes": []}}}`
+	}
+	in, err := f.client("tok").Inbox(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in.NeedsReview) != 2 || len(in.Merged) != 1 {
+		t.Fatalf("the PRs themselves must still show: %+v", in)
+	}
+	if len(in.Warnings) != 2 {
+		t.Fatalf("want one permission warning and one deduplicated error, got %q", in.Warnings)
+	}
+	if !strings.Contains(in.Warnings[0], "3 pull requests") || !strings.Contains(in.Warnings[0], "Checks") {
+		t.Fatalf("permission warning %q", in.Warnings[0])
+	}
+	if in.Warnings[1] != "slow down (2 times)" {
+		t.Fatalf("deduplicated warning %q", in.Warnings[1])
 	}
 }

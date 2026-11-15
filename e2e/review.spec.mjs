@@ -47,7 +47,7 @@ test('review page shows the action card, checks and the diff', async () => {
 });
 
 test('clicking a line number opens the composer and saves a draft', async () => {
-  await page.locator('#pr-diff tr.row').nth(1).locator('td.no').nth(1).click();
+  await page.locator('#pr-diff tr.ln').nth(1).locator('td.no').nth(1).click();
   const composer = page.locator('#pr-diff .composer textarea');
   await expect(composer).toBeVisible();
   await composer.fill('Should this be exported?');

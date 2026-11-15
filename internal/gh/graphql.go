@@ -20,6 +20,21 @@ type GraphQLError struct {
 	Locs    []any  `json:"locations"`
 }
 
+// forbiddenCommit reports whether GitHub refused a pull request's commit
+// (and so its check status) because the App lacks Contents, Checks or
+// Commit statuses permission on that repository.
+func (e GraphQLError) forbiddenCommit() bool {
+	if e.Type != "FORBIDDEN" {
+		return false
+	}
+	for _, p := range e.Path {
+		if p == "commits" {
+			return true
+		}
+	}
+	return false
+}
+
 // GraphQLErrors wraps the errors array.
 type GraphQLErrors []GraphQLError
 
