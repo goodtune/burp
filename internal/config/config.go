@@ -49,7 +49,35 @@ type Config struct {
 	GitHub GitHub
 	Store  Store
 	Vault  Vault
+	ACME   ACME
 }
+
+// ACME holds automatic TLS settings. When Directory is set, burp serves
+// HTTPS on Listen with certificates obtained from that ACME directory (for
+// example a Vault PKI role's /acme/directory) and renews them itself.
+type ACME struct {
+	// Directory is the ACME directory URL. Empty disables ACME.
+	Directory string
+	// Domains are the names to request certificates for. They default to
+	// the host of BaseURL.
+	Domains []string
+	// Email is an optional account contact.
+	Email string
+	// CacheDir holds the account key and issued certificates.
+	CacheDir string
+	// CAFile is an optional PEM bundle trusted when talking to the ACME
+	// server, in addition to the system roots.
+	CAFile string
+	// TLSALPNListen is an extra address (normally ":443") that answers
+	// tls-alpn-01 challenges; the CA always validates on port 443.
+	TLSALPNListen string
+	// HTTPListen is an extra address (normally ":80") that answers
+	// http-01 challenges and redirects everything else to BaseURL.
+	HTTPListen string
+}
+
+// Enabled reports whether burp should obtain its certificate over ACME.
+func (a ACME) Enabled() bool { return a.Directory != "" }
 
 // GitHub holds the GitHub App settings.
 type GitHub struct {
@@ -260,6 +288,36 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 			}
 		default:
 			errs = append(errs, fmt.Errorf("BURP_VAULT_AUTH_METHOD must be one of %s, %s, %s", VaultAuthKubernetes, VaultAuthAppRole, VaultAuthToken))
+		}
+	}
+
+	// ACME.
+	a := &cfg.ACME
+	a.Directory = env("ACME_DIRECTORY", "")
+	a.Email = env("ACME_EMAIL", "")
+	a.CacheDir = env("ACME_CACHE_DIR", "acme")
+	a.CAFile = env("ACME_CA_FILE", "")
+	a.TLSALPNListen = env("ACME_TLS_ALPN_LISTEN", "")
+	a.HTTPListen = env("ACME_HTTP_LISTEN", "")
+	for _, d := range strings.Split(env("ACME_DOMAINS", ""), ",") {
+		if d = strings.ToLower(strings.TrimSpace(d)); d != "" {
+			a.Domains = append(a.Domains, d)
+		}
+	}
+	if a.Enabled() {
+		if du, derr := url.Parse(a.Directory); derr != nil || du.Scheme != "https" || du.Host == "" {
+			errs = append(errs, errors.New("BURP_ACME_DIRECTORY must be an absolute https URL"))
+		}
+		if u != nil && u.Scheme != "https" {
+			errs = append(errs, errors.New("BURP_ACME_DIRECTORY requires an https BURP_BASE_URL"))
+		}
+		if len(a.Domains) == 0 && u != nil && u.Hostname() != "" {
+			a.Domains = []string{strings.ToLower(u.Hostname())}
+		}
+		if a.CAFile != "" {
+			if _, serr := os.Stat(a.CAFile); serr != nil {
+				errs = append(errs, fmt.Errorf("BURP_ACME_CA_FILE: %w", serr))
+			}
 		}
 	}
 

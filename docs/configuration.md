@@ -16,6 +16,35 @@ file. Boolean values accept `true`/`false`, `1`/`0`; durations use Go syntax
 | `BURP_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. `debug` adds an access log. |
 | `BURP_LOG_FORMAT` | `text` | `text` or `json`. |
 
+## TLS with ACME
+
+burp serves plain HTTP by default and expects a proxy to terminate TLS. Set
+`BURP_ACME_DIRECTORY` and burp serves HTTPS on `BURP_LISTEN` itself, using a
+certificate it obtains from that ACME directory. It renews the certificate
+in the background once a third of its lifetime remains, which suits
+short-lived certificates from an internal CA. Any ACME CA works. For a
+HashiCorp Vault PKI mount the directory is per role:
+`https://vault.example.com:8200/v1/<mount>/roles/<role>/acme/directory`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `BURP_ACME_DIRECTORY` | | ACME directory URL. Setting it turns ACME on. Requires an `https://` `BURP_BASE_URL`. |
+| `BURP_ACME_DOMAINS` | host of `BURP_BASE_URL` | Comma-separated names on the certificate. burp refuses TLS handshakes for any other name. |
+| `BURP_ACME_EMAIL` | | Optional account contact. |
+| `BURP_ACME_CACHE_DIR` | `acme` | Directory for the account key and issued certificates (created with mode 0700). Keep it on persistent storage. |
+| `BURP_ACME_CA_FILE` | | PEM bundle to trust when burp talks to the ACME server, in addition to the system roots. Use it when the CA's own endpoint has a certificate from a private root, for example in a container. |
+| `BURP_ACME_TLS_ALPN_LISTEN` | | Extra address, normally `:443`, that answers `tls-alpn-01` challenges and redirects other visitors to `BURP_BASE_URL`. |
+| `BURP_ACME_HTTP_LISTEN` | | Extra address, normally `:80`, that answers `http-01` challenges and redirects other requests to `BURP_BASE_URL`. |
+
+The CA checks a challenge on port 443 (`tls-alpn-01`) or port 80
+(`http-01`) of the domain, whatever port burp itself listens on. If
+`BURP_LISTEN` is `:443`, no extra listener is needed. Otherwise set one of
+the two challenge listeners on a port that reaches burp. burp binds them at
+startup and stops with an error if the port is already in use.
+
+Browsers must trust the CA's root. Certificates from a Vault PKI mount
+chain to that mount's CA (`/v1/<mount>/ca/pem`).
+
 ## GitHub App
 
 | Variable | Default | Description |

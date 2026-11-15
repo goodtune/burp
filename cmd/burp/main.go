@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goodtune/burp/internal/acme"
 	"github.com/goodtune/burp/internal/bus"
 	"github.com/goodtune/burp/internal/config"
 	"github.com/goodtune/burp/internal/crypto"
@@ -242,20 +243,67 @@ func serve() error {
 		// No WriteTimeout: SSE streams stay open indefinitely.
 		IdleTimeout: 120 * time.Second,
 	}
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 4)
+	var extra []*http.Server
+	if cfg.ACME.Enabled() {
+		m, err := acme.New(cfg.ACME)
+		if err != nil {
+			return err
+		}
+		httpSrv.TLSConfig = m.TLSConfig()
+		redirect := acme.RedirectHandler(cfg.BaseURL)
+		// Bind the challenge listeners before serving so a port clash
+		// fails startup instead of every renewal.
+		if addr := cfg.ACME.TLSALPNListen; addr != "" {
+			ln, err := acme.Listen(addr, "tls-alpn-01")
+			if err != nil {
+				return err
+			}
+			s := &http.Server{Handler: redirect, TLSConfig: m.TLSConfig(), ReadHeaderTimeout: 10 * time.Second}
+			extra = append(extra, s)
+			go func() { errCh <- serveUntilClosed(s.ServeTLS(ln, "", "")) }()
+		}
+		if addr := cfg.ACME.HTTPListen; addr != "" {
+			ln, err := acme.Listen(addr, "http-01")
+			if err != nil {
+				return err
+			}
+			s := &http.Server{Handler: m.HTTPHandler(redirect), ReadHeaderTimeout: 10 * time.Second}
+			extra = append(extra, s)
+			go func() { errCh <- serveUntilClosed(s.Serve(ln)) }()
+		}
+		logger.Info("acme", "directory", cfg.ACME.Directory, "domains", cfg.ACME.Domains, "cache", cfg.ACME.CacheDir,
+			"tls_alpn_listen", cfg.ACME.TLSALPNListen, "http_listen", cfg.ACME.HTTPListen)
+		go acme.Warm(ctx, m, cfg.ACME.Domains, logger)
+	}
 	go func() {
-		logger.Info("listening", "addr", cfg.Listen, "base_url", cfg.BaseURL, "version", version)
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+		logger.Info("listening", "addr", cfg.Listen, "base_url", cfg.BaseURL, "tls", cfg.ACME.Enabled(), "version", version)
+		if cfg.ACME.Enabled() {
+			errCh <- serveUntilClosed(httpSrv.ListenAndServeTLS("", ""))
+		} else {
+			errCh <- serveUntilClosed(httpSrv.ListenAndServe())
 		}
 	}()
 	select {
 	case err := <-errCh:
-		return err
+		if err != nil {
+			return err
+		}
 	case <-ctx.Done():
 	}
 	logger.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
+	for _, s := range extra {
+		_ = s.Shutdown(shutdownCtx)
+	}
 	return httpSrv.Shutdown(shutdownCtx)
+}
+
+// serveUntilClosed hides the error a server returns after Shutdown.
+func serveUntilClosed(err error) error {
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }

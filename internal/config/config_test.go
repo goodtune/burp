@@ -141,3 +141,79 @@ func TestGHESGraphQL(t *testing.T) {
 		t.Fatal(g.GraphQLURL())
 	}
 }
+
+func TestACMEDisabledByDefault(t *testing.T) {
+	cfg, err := LoadFrom(envFrom(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ACME.Enabled() {
+		t.Fatalf("acme enabled without a directory: %+v", cfg.ACME)
+	}
+}
+
+func TestACMEDefaults(t *testing.T) {
+	m := minimal()
+	m["BURP_BASE_URL"] = "https://burp.example.com:12000"
+	m["BURP_ACME_DIRECTORY"] = "https://vault:8200/v1/pki/roles/lan/acme/directory"
+	cfg, err := LoadFrom(envFrom(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := cfg.ACME
+	if !a.Enabled() {
+		t.Fatal("acme not enabled")
+	}
+	if len(a.Domains) != 1 || a.Domains[0] != "burp.example.com" {
+		t.Fatalf("domains default to the base URL host without the port: %q", a.Domains)
+	}
+	if a.CacheDir != "acme" || a.TLSALPNListen != "" || a.HTTPListen != "" {
+		t.Fatalf("unexpected defaults: %+v", a)
+	}
+}
+
+func TestACMEDomainsAndListeners(t *testing.T) {
+	m := minimal()
+	m["BURP_ACME_DIRECTORY"] = "https://vault:8200/v1/pki/roles/lan/acme/directory"
+	m["BURP_ACME_DOMAINS"] = " burp.example.com, Alt.Example.com ,"
+	m["BURP_ACME_TLS_ALPN_LISTEN"] = ":443"
+	m["BURP_ACME_HTTP_LISTEN"] = ":80"
+	m["BURP_ACME_CACHE_DIR"] = "/var/lib/burp/acme"
+	cfg, err := LoadFrom(envFrom(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := cfg.ACME
+	if strings.Join(a.Domains, ",") != "burp.example.com,alt.example.com" {
+		t.Fatalf("domains %q", a.Domains)
+	}
+	if a.TLSALPNListen != ":443" || a.HTTPListen != ":80" || a.CacheDir != "/var/lib/burp/acme" {
+		t.Fatalf("unexpected: %+v", a)
+	}
+}
+
+func TestACMEErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		mut  func(map[string]string)
+		want string
+	}{
+		{"http base url", func(m map[string]string) {
+			m["BURP_DEV_MODE"] = "true"
+			m["BURP_BASE_URL"] = "http://burp.example.com"
+		}, "BURP_ACME_DIRECTORY requires an https BURP_BASE_URL"},
+		{"relative directory", func(m map[string]string) { m["BURP_ACME_DIRECTORY"] = "vault/acme" }, "BURP_ACME_DIRECTORY must be an absolute https URL"},
+		{"missing ca file", func(m map[string]string) { m["BURP_ACME_CA_FILE"] = "/nonexistent/ca.pem" }, "BURP_ACME_CA_FILE"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := minimal()
+			m["BURP_ACME_DIRECTORY"] = "https://vault:8200/v1/pki/roles/lan/acme/directory"
+			tc.mut(m)
+			_, err := LoadFrom(envFrom(m))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

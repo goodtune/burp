@@ -27,6 +27,8 @@ client-side application framework.
 * **Live updates**: a `pull_request`, review, comment, thread, check or
   status webhook re-renders the affected page regions. New commits show a
   banner instead of changing the diff under you.
+* **Optional built-in HTTPS** with certificates from any ACME CA, such as
+  a HashiCorp Vault PKI role, renewed automatically.
 * **Credentials encrypted at rest** (AES-256-GCM, key from the environment)
   with sqlite or PostgreSQL, or stored in **HashiCorp Vault** (KV v2) using
   Kubernetes, AppRole or token auth.
