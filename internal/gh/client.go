@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	ghub "github.com/google/go-github/v91/github"
@@ -85,14 +86,12 @@ fragment PRSummary on PullRequest {
   latestReviews(first: 10) { nodes { author { login avatarUrl } state } }
 }`
 
-const inboxQuery = `
-query Inbox($needsReview: String!, $returned: String!, $approved: String!, $waiting: String!, $drafts: String!, $merged: String!) {
-  needsReview: search(type: ISSUE, query: $needsReview, first: 30) { nodes { ...PRSummary } }
-  returned: search(type: ISSUE, query: $returned, first: 30) { nodes { ...PRSummary } }
-  approved: search(type: ISSUE, query: $approved, first: 30) { nodes { ...PRSummary } }
-  waiting: search(type: ISSUE, query: $waiting, first: 30) { nodes { ...PRSummary } }
-  drafts: search(type: ISSUE, query: $drafts, first: 30) { nodes { ...PRSummary } }
-  merged: search(type: ISSUE, query: $merged, first: 10) { nodes { ...PRSummary } }
+// inboxSectionQuery runs one inbox search. Each section is its own request
+// because GitHub ends a GraphQL query after 10 seconds with a bare 502, and
+// six PR searches with check rollups in one query come close to that limit.
+const inboxSectionQuery = `
+query InboxSection($q: String!, $first: Int!) {
+  search(type: ISSUE, query: $q, first: $first) { nodes { ...PRSummary } }
 }` + prSummaryFragment
 
 // InboxQueries are the GitHub search strings behind each section; the
@@ -112,43 +111,88 @@ func InboxQueries(filter string) map[string]string {
 	}
 }
 
-// Inbox runs the six searches as the user.
+// inboxSection describes one search: its InboxQueries key, the title the
+// inbox shows for it (used in warnings), its size and where results go.
+type inboxSection struct {
+	key, title string
+	first      int
+	dst        func(*Inbox) *[]PRSummary
+}
+
+var inboxSections = []inboxSection{
+	{"needsReview", "Needs your review", 30, func(in *Inbox) *[]PRSummary { return &in.NeedsReview }},
+	{"returned", "Returned to you", 30, func(in *Inbox) *[]PRSummary { return &in.Returned }},
+	{"approved", "Approved, ready to merge", 30, func(in *Inbox) *[]PRSummary { return &in.Approved }},
+	{"waiting", "Waiting on reviewers", 30, func(in *Inbox) *[]PRSummary { return &in.Waiting }},
+	{"drafts", "Drafts", 30, func(in *Inbox) *[]PRSummary { return &in.Drafts }},
+	{"merged", "Recently merged", 10, func(in *Inbox) *[]PRSummary { return &in.Merged }},
+}
+
+// Inbox runs the six searches as the user, in parallel. A section that
+// fails becomes a warning so the others still show; the error is returned
+// only when the user must sign in again or every section failed.
 func (c *Client) Inbox(ctx context.Context, filter string) (*Inbox, error) {
-	vars := map[string]any{}
-	for k, v := range InboxQueries(filter) {
-		vars[k] = v
+	queries := InboxQueries(filter)
+	type result struct {
+		nodes []PRSummary
+		err   error
 	}
-	type section struct {
-		Nodes []PRSummary `json:"nodes"`
+	results := make([]result, len(inboxSections))
+	var wg sync.WaitGroup
+	for i, sec := range inboxSections {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var data struct {
+				Search struct {
+					Nodes []PRSummary `json:"nodes"`
+				} `json:"search"`
+			}
+			err := c.graphql(ctx, inboxSectionQuery, map[string]any{"q": queries[sec.key], "first": sec.first}, &data)
+			results[i] = result{nodes: data.Search.Nodes, err: err}
+		}()
 	}
-	var data struct {
-		NeedsReview section `json:"needsReview"`
-		Returned    section `json:"returned"`
-		Approved    section `json:"approved"`
-		Waiting     section `json:"waiting"`
-		Drafts      section `json:"drafts"`
-		Merged      section `json:"merged"`
-	}
-	err := c.graphql(ctx, inboxQuery, vars, &data)
-	in := &Inbox{
-		NeedsReview: onlyPRs(data.NeedsReview.Nodes),
-		Returned:    onlyPRs(data.Returned.Nodes),
-		Approved:    onlyPRs(data.Approved.Nodes),
-		Waiting:     onlyPRs(data.Waiting.Nodes),
-		Drafts:      onlyPRs(data.Drafts.Nodes),
-		Merged:      onlyPRs(data.Merged.Nodes),
-	}
-	if err != nil {
+	wg.Wait()
+
+	in := &Inbox{}
+	var firstErr error
+	failed := 0
+	for i, sec := range inboxSections {
+		r := results[i]
+		*sec.dst(in) = onlyPRs(r.nodes)
+		if r.err == nil {
+			continue
+		}
+		if errors.Is(r.err, ErrReauthRequired) {
+			return nil, r.err
+		}
 		var ge GraphQLErrors
-		if errors.As(err, &ge) {
+		if errors.As(r.err, &ge) {
 			for _, e := range ge {
 				in.Warnings = append(in.Warnings, e.Message)
 			}
-			return in, nil
+			continue
 		}
-		return nil, err
+		failed++
+		if firstErr == nil {
+			firstErr = r.err
+		}
+		in.Warnings = append(in.Warnings, sectionWarning(sec.title, r.err))
+	}
+	if failed == len(inboxSections) {
+		return nil, firstErr
 	}
 	return in, nil
+}
+
+// sectionWarning describes a failed section without echoing an HTML error
+// page into the inbox.
+func sectionWarning(title string, err error) string {
+	var ae *APIError
+	if errors.As(err, &ae) {
+		return fmt.Sprintf("%s could not be loaded: GitHub returned %d. Reload to try again.", title, ae.Status)
+	}
+	return fmt.Sprintf("%s could not be loaded: %v", title, err)
 }
 
 // onlyPRs drops issues that a search could return and empty nodes.

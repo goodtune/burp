@@ -89,12 +89,17 @@ func main() {
 		switch {
 		case r.URL.Path == "/graphql" || r.URL.Path == "/api/graphql":
 			var req struct {
-				Query string `json:"query"`
+				Query string         `json:"query"`
+				Vars  map[string]any `json:"variables"`
 			}
 			json.Unmarshal(body, &req)
 			switch {
-			case strings.Contains(req.Query, "needsReview: search"):
-				w.Write([]byte(`{"data": {"needsReview": {"nodes": [` + inboxNode + `]}, "returned": {"nodes": []}, "approved": {"nodes": []}, "waiting": {"nodes": []}, "drafts": {"nodes": []}, "merged": {"nodes": []}}}`))
+			case strings.Contains(req.Query, "query InboxSection"):
+				if q, _ := req.Vars["q"].(string); strings.Contains(q, "review-requested:@me") {
+					w.Write([]byte(`{"data": {"search": {"nodes": [` + inboxNode + `]}}}`))
+				} else {
+					w.Write([]byte(`{"data": {"search": {"nodes": []}}}`))
+				}
 			case strings.Contains(req.Query, "esolveReviewThread"):
 				resolved++
 				w.Write([]byte(`{"data": {}}`))

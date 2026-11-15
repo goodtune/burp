@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -66,22 +67,40 @@ const prNode = `{"number": 1, "title": "T", "url": "u", "isDraft": false, "state
  "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "bob"}}, {"requestedReviewer": {"slug": "core"}}]},
  "latestReviews": {"nodes": [{"author": {"login": "carol"}, "state": "APPROVED"}]}}`
 
+// answerInboxSection answers one per-section inbox search: the PR node for
+// the needs-review search, nothing for the others.
+func answerInboxSection(query string, vars map[string]any) (int, string) {
+	if !strings.Contains(query, "query InboxSection") {
+		return 400, `{"errors":[{"message":"unexpected query"}]}`
+	}
+	if q, _ := vars["q"].(string); strings.Contains(q, "review-requested:@me") {
+		return 200, `{"data": {"search": {"nodes": [` + prNode + `, {}]}}}`
+	}
+	return 200, `{"data": {"search": {"nodes": []}}}`
+}
+
 func TestInbox(t *testing.T) {
 	f := newFakeGitHub(t)
+	var mu sync.Mutex
+	var queries []string
 	f.graphql = func(query string, vars map[string]any) (int, string) {
-		if !strings.Contains(query, "needsReview: search") {
-			return 400, `{"errors":[{"message":"unexpected query"}]}`
+		mu.Lock()
+		q, _ := vars["q"].(string)
+		queries = append(queries, q)
+		mu.Unlock()
+		if !strings.HasSuffix(q, "repo:acme/api") {
+			return 400, `{"errors":[{"message":"filter not applied"}]}`
 		}
-		if q, _ := vars["needsReview"].(string); !strings.Contains(q, "review-requested:@me") || !strings.HasSuffix(q, "repo:acme/api") {
-			return 400, `{"errors":[{"message":"bad needsReview query"}]}`
-		}
-		return 200, `{"data": {"needsReview": {"nodes": [` + prNode + `, {}]}, "returned": {"nodes": []}, "approved": {"nodes": []}, "waiting": {"nodes": []}, "drafts": {"nodes": []}, "merged": {"nodes": []}}}`
+		return answerInboxSection(query, vars)
 	}
 	in, err := f.client("tok").Inbox(context.Background(), "repo:acme/api")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(in.NeedsReview) != 1 || len(in.Returned) != 0 {
+	if len(queries) != 6 {
+		t.Fatalf("want one request per section, got %d: %q", len(queries), queries)
+	}
+	if len(in.NeedsReview) != 1 || len(in.Returned) != 0 || len(in.Warnings) != 0 {
 		t.Fatalf("%+v", in)
 	}
 	p := in.NeedsReview[0]
@@ -99,7 +118,10 @@ func TestInbox(t *testing.T) {
 func TestInboxPartialErrors(t *testing.T) {
 	f := newFakeGitHub(t)
 	f.graphql = func(query string, vars map[string]any) (int, string) {
-		return 200, `{"data": {"needsReview": {"nodes": [` + prNode + `]}, "returned": null}, "errors": [{"message": "rate limited"}]}`
+		if q, _ := vars["q"].(string); strings.Contains(q, "author:@me review:changes_requested") {
+			return 200, `{"data": {"search": null}, "errors": [{"message": "rate limited"}]}`
+		}
+		return answerInboxSection(query, vars)
 	}
 	in, err := f.client("tok").Inbox(context.Background(), "")
 	if err != nil {
@@ -107,6 +129,40 @@ func TestInboxPartialErrors(t *testing.T) {
 	}
 	if len(in.NeedsReview) != 1 || len(in.Warnings) != 1 || in.Warnings[0] != "rate limited" {
 		t.Fatalf("%+v", in)
+	}
+}
+
+// GitHub ends a GraphQL query after 10 seconds with a bare 502. One slow
+// section must not blank the whole inbox.
+func TestInboxSectionTimeout(t *testing.T) {
+	f := newFakeGitHub(t)
+	f.graphql = func(query string, vars map[string]any) (int, string) {
+		if q, _ := vars["q"].(string); strings.Contains(q, "is:merged") {
+			return 502, `<html><head><title>502 Bad Gateway</title></head></html>`
+		}
+		return answerInboxSection(query, vars)
+	}
+	in, err := f.client("tok").Inbox(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in.NeedsReview) != 1 {
+		t.Fatalf("other sections lost: %+v", in)
+	}
+	if len(in.Warnings) != 1 || !strings.Contains(in.Warnings[0], "Recently merged") || !strings.Contains(in.Warnings[0], "502") {
+		t.Fatalf("warnings %q", in.Warnings)
+	}
+}
+
+func TestInboxAllSectionsFail(t *testing.T) {
+	f := newFakeGitHub(t)
+	f.graphql = func(string, map[string]any) (int, string) {
+		return 502, `<html><head><title>502 Bad Gateway</title></head></html>`
+	}
+	_, err := f.client("tok").Inbox(context.Background(), "")
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != 502 {
+		t.Fatalf("want the 502 when every section fails, got %v", err)
 	}
 }
 
