@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/goodtune/burp/internal/gh"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 // Subscriber keeps a ghp webhook stream open.
@@ -122,6 +124,7 @@ func (s *Subscriber) stream(ctx context.Context, lastID *string) (int, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("User-Agent", useragent.String())
 	if *lastID != "" {
 		req.Header.Set("Last-Event-ID", *lastID)
 	}

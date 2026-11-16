@@ -10,6 +10,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	ghub "github.com/google/go-github/v91/github"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 // AppInfo describes the GitHub App as registered.
@@ -63,6 +65,7 @@ func (t jwtTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	r2 := r.Clone(r.Context())
 	r2.Header.Set("Authorization", "Bearer "+tok)
+	r2.Header.Set("User-Agent", useragent.String())
 	return t.app.rt.RoundTrip(r2)
 }
 

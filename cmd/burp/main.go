@@ -34,6 +34,8 @@ import (
 	"github.com/goodtune/burp/internal/store/vaultstore"
 	"github.com/goodtune/burp/internal/tlsutil"
 	"github.com/goodtune/burp/internal/web"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 var version = "dev"
@@ -172,6 +174,7 @@ func migrate() error {
 }
 
 func serve() error {
+	useragent.Set(version)
 	cfg, err := config.Load()
 	if err != nil {
 		return err

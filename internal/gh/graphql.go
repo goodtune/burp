@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 const maxGraphQLResponse = 32 << 20
@@ -57,6 +59,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("User-Agent", useragent.String())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)

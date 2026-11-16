@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 const maxTokenResponse = 64 * 1024
@@ -97,6 +99,7 @@ func (o *OAuth) post(ctx context.Context, form url.Values) (*TokenResponse, erro
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", useragent.String())
 	req.Header.Set("Accept", "application/json")
 	client := o.HTTPClient
 	if client == nil {

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	ghub "github.com/google/go-github/v91/github"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 // Client calls GitHub as one user.
@@ -33,7 +35,7 @@ func (f *ClientFactory) New(token string) *Client {
 	if hc == nil {
 		hc = &http.Client{Timeout: 60 * time.Second}
 	}
-	opts := []ghub.ClientOptionsFunc{ghub.WithHTTPClient(hc), ghub.WithAuthToken(token)}
+	opts := []ghub.ClientOptionsFunc{ghub.WithHTTPClient(hc), ghub.WithAuthToken(token), ghub.WithUserAgent(useragent.String())}
 	if f.APIURL != "" && f.APIURL != "https://api.github.com" {
 		opts = append(opts, ghub.WithEnterpriseURLs(f.APIURL, f.APIURL))
 	}
@@ -41,7 +43,7 @@ func (f *ClientFactory) New(token string) *Client {
 	// validation already rejects; fall back to defaults defensively.
 	rest, err := ghub.NewClient(opts...)
 	if err != nil {
-		rest, _ = ghub.NewClient(ghub.WithHTTPClient(hc), ghub.WithAuthToken(token))
+		rest, _ = ghub.NewClient(ghub.WithHTTPClient(hc), ghub.WithAuthToken(token), ghub.WithUserAgent(useragent.String()))
 	}
 	return &Client{token: token, http: hc, rest: rest, graphqlURL: f.GraphQLURL}
 }

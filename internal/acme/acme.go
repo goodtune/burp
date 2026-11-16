@@ -23,6 +23,8 @@ import (
 
 	"github.com/goodtune/burp/internal/config"
 	"github.com/goodtune/burp/internal/tlsutil"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 // New builds a certificate manager for cfg. It does not contact the ACME
@@ -46,7 +48,7 @@ func New(cfg config.ACME) (*autocert.Manager, error) {
 		Cache:      autocert.DirCache(cfg.CacheDir),
 		HostPolicy: autocert.HostWhitelist(cfg.Domains...),
 		Email:      cfg.Email,
-		Client:     &acme.Client{DirectoryURL: cfg.Directory, HTTPClient: hc},
+		Client:     &acme.Client{DirectoryURL: cfg.Directory, HTTPClient: hc, UserAgent: useragent.String()},
 	}, nil
 }
 

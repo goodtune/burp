@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/goodtune/burp/internal/useragent"
 )
 
 // fakeGitHub serves canned GraphQL and REST responses.
@@ -400,5 +402,39 @@ func TestInboxForbiddenChecksCollapse(t *testing.T) {
 	}
 	if in.Warnings[1] != "slow down (2 times)" {
 		t.Fatalf("deduplicated warning %q", in.Warnings[1])
+	}
+}
+
+func TestUserAgent(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen[r.URL.Path] = r.Header.Get("User-Agent")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/graphql" {
+			w.Write([]byte(`{"data": {"search": {"nodes": []}}}`))
+			return
+		}
+		w.Write([]byte(`{"id": 1, "login": "alice"}`))
+	}))
+	defer srv.Close()
+	c := (&ClientFactory{APIURL: srv.URL + "/api/v3", GraphQLURL: srv.URL + "/graphql"}).New("tok")
+	if _, err := c.Viewer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Inbox(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for path, ua := range seen {
+		if ua != useragent.String() {
+			t.Errorf("%s sent User-Agent %q, want %q", path, ua, useragent.String())
+		}
+	}
+	if len(seen) < 2 {
+		t.Fatalf("expected REST and GraphQL requests, saw %v", seen)
 	}
 }
