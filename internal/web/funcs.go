@@ -16,6 +16,7 @@ func (s *Server) funcs() template.FuncMap {
 		"safeHTML":   func(v string) template.HTML { return template.HTML(v) },
 		"jsonAttr":   func(v any) string { b, _ := json.Marshal(v); return string(b) },
 		"jsStr":      jsStr,
+		"inboxOpen":  inboxOpenSignals,
 		"add":        func(a, b int) int { return a + b },
 		"sub":        func(a, b int) int { return a - b },
 		"pct":        pct,

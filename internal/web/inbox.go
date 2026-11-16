@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +28,31 @@ type inboxSection struct {
 	Hint     string
 	Rows     []inboxRow
 	Collapse bool
+}
+
+// inboxSectionKeys lists the sections in display order, and
+// collapsedByDefault the ones that start closed.
+var (
+	inboxSectionKeys   = []string{"needs-review", "returned", "approved", "waiting", "drafts", "merged"}
+	collapsedByDefault = map[string]bool{"waiting": true, "drafts": true, "merged": true}
+)
+
+// Signal names the datastar signal that holds whether the section is open.
+// The signals live outside #inbox-sections, so a live re-render keeps the
+// sections the viewer opened or closed instead of resetting them. It is
+// template.JS because html/template treats data-on:* as an event handler
+// and would otherwise quote it; keys are fixed identifiers, never input.
+func (s inboxSection) Signal() template.JS {
+	return template.JS("open." + strings.ReplaceAll(s.Key, "-", "_"))
+}
+
+// inboxOpenSignals is the initial value of the open signals.
+func inboxOpenSignals() string {
+	parts := make([]string, len(inboxSectionKeys))
+	for i, k := range inboxSectionKeys {
+		parts[i] = fmt.Sprintf("%s: %t", strings.ReplaceAll(k, "-", "_"), !collapsedByDefault[k])
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }
 
 // inboxRow is one PR row.
@@ -89,7 +116,11 @@ func (s *Server) handleInboxStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sub.SetTopics(topics...)
-		if err := s.patch(sse, "inbox_sections", view); err != nil {
+		// Replace rather than morph: morphing copies each section's default
+		// open attribute back onto the live element, closing sections the
+		// viewer opened. Fresh elements run data-init, which restores the
+		// viewer's choice from the open signals.
+		if err := s.patch(sse, "inbox_sections", view, datastar.WithMode(datastar.ElementPatchModeReplace)); err != nil {
 			return false
 		}
 		return true
@@ -188,17 +219,20 @@ func (s *Server) buildInbox(ctx context.Context, client *gh.Client, u *store.Use
 			Rows: rows(in.Returned, func(p gh.PRSummary) string { return "changes requested" + reviewerNames(p, "CHANGES_REQUESTED") }, false)},
 		{Key: "approved", Title: "Approved, ready to merge", Hint: "your PRs that have been approved",
 			Rows: rows(in.Approved, func(p gh.PRSummary) string { return "approved" + reviewerNames(p, "APPROVED") }, false)},
-		{Key: "waiting", Title: "Waiting on reviewers", Hint: "your open PRs without a decision", Collapse: true,
+		{Key: "waiting", Title: "Waiting on reviewers", Hint: "your open PRs without a decision",
 			Rows: rows(in.Waiting, func(p gh.PRSummary) string {
 				if rr := p.RequestedReviewers(); len(rr) > 0 {
 					return "waiting on " + joinAt(rr)
 				}
 				return "no reviewer requested"
 			}, false)},
-		{Key: "drafts", Title: "Drafts", Hint: "your draft PRs", Collapse: true,
+		{Key: "drafts", Title: "Drafts", Hint: "your draft PRs",
 			Rows: rows(in.Drafts, func(gh.PRSummary) string { return "draft" }, false)},
-		{Key: "merged", Title: "Recently merged", Hint: "merged PRs you were involved in", Collapse: true,
+		{Key: "merged", Title: "Recently merged", Hint: "merged PRs you were involved in",
 			Rows: rows(in.Merged, func(gh.PRSummary) string { return "merged" }, false)},
+	}
+	for i := range v.Sections {
+		v.Sections[i].Collapse = collapsedByDefault[v.Sections[i].Key]
 	}
 	// A pull request belongs to the first section that claims it.
 	seen := map[string]bool{}

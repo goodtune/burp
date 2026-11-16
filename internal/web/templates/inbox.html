@@ -1,5 +1,5 @@
 {{define "inbox"}}{{template "head" .}}
-<section class="inbox" data-signals="{filter: {{jsStr .Filter}}}">
+<section class="inbox" data-signals="{filter: {{jsStr .Filter}}, open: {{inboxOpen}}}">
   <div class="inbox-head">
     <h1>Inbox</h1>
     <form class="inbox-controls" id="inbox-controls" data-on:submit__prevent="@get('/inbox/stream')"
@@ -17,7 +17,7 @@
   <p class="muted small inbox-status">updated {{relTime .Rendered}} · {{plural .Total "pull request"}}{{if .Filter}} · filter: <code>{{.Filter}}</code>{{end}} <span class="legend-inline">{{stateDot "OPEN" false}} open {{stateDot "OPEN" true}} draft {{stateDot "MERGED" false}} merged {{stateDot "CLOSED" false}} closed <span class="sep">|</span> checks {{checkIcon "success"}} pass {{checkIcon "failure"}} fail {{checkIcon "pending"}} running {{checkIcon ""}} none</span></p>
   {{range .Warnings}}<p class="error-box">{{.}}</p>{{end}}
   {{range .Sections}}
-  <details class="section" {{if not .Collapse}}open{{end}}>
+  <details class="section" {{if not .Collapse}}open{{end}} data-init="el.open = ${{.Signal}}" data-on:toggle="${{.Signal}} = el.open">
     <summary><h2>{{.Title}} <span class="count">{{len .Rows}}</span></h2><span class="muted small">{{.Hint}}</span></summary>
     {{if .Rows}}
     <ul class="rows">
