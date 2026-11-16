@@ -78,6 +78,15 @@ type Server struct {
 	prMu    sync.Mutex
 	prCache map[string]prEntry
 
+	// inboxCache keeps each user's last inbox searches (per filter) so the
+	// inbox paints at once and live updates do not re-run six GitHub
+	// searches for every webhook.
+	inboxMu    sync.Mutex
+	inboxCache map[string]inboxEntry
+	// inboxMinFetch is the least time between two GitHub fetches for one
+	// open inbox; webhook events in between are folded into the next one.
+	inboxMinFetch time.Duration
+
 	// assetVer fingerprints the embedded static files so that browsers
 	// refetch them after an upgrade despite the long cache lifetime.
 	assetVer string
@@ -87,6 +96,23 @@ type prEntry struct {
 	pr *gh.PullRequest
 	at time.Time
 }
+
+type inboxEntry struct {
+	in    *gh.Inbox
+	at    time.Time
+	stale bool // the viewer changed something since; refresh before trusting
+}
+
+const (
+	// inboxFresh: a cached inbox younger than this is shown without asking
+	// GitHub again.
+	inboxFresh = 30 * time.Second
+	// inboxKeep: a cached inbox younger than this is shown at once while a
+	// fresh one is fetched.
+	inboxKeep = 10 * time.Minute
+	// inboxDedupe: concurrent streams (several tabs) share a fetch this recent.
+	inboxDedupe = 5 * time.Second
+)
 
 // prTTL bounds how long a cached pull request query is reused for views.
 // Mutations and webhook events invalidate it earlier.
@@ -118,8 +144,10 @@ func New(d Deps) (*Server, error) {
 	s := &Server{
 		cfg: d.Config, store: d.Store, tokens: d.Tokens, oauth: d.OAuth, clients: d.Clients,
 		bus: d.Bus, logger: d.Logger, appSlug: d.AppSlug, started: time.Now(),
-		compareCache: map[string]map[string]bool{},
-		assetVer:     assetVersion(),
+		compareCache:  map[string]map[string]bool{},
+		inboxCache:    map[string]inboxEntry{},
+		inboxMinFetch: 15 * time.Second,
+		assetVer:      assetVersion(),
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()

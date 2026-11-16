@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -97,13 +98,30 @@ func (s *Server) handleInboxStream(w http.ResponseWriter, r *http.Request) {
 	sub := s.bus.Open(bus.UserTopic(u.Login))
 	defer sub.Cancel()
 
-	render := func() bool {
-		client, err := s.clientFor(ctx, u)
-		if err != nil {
-			s.handleAPIError(sse, "inbox-sections", err, "@get('/inbox/stream')")
-			return false
+	// render shows the inbox from in, or fetches it from GitHub when in is
+	// nil (live updates pass live, so a fetch another tab just made is not
+	// mistaken for one that saw the event). A failed refresh keeps the inbox
+	// on screen with a warning.
+	var shown *gh.Inbox
+	render := func(in *gh.Inbox, live bool) bool {
+		if in == nil {
+			client, err := s.clientFor(ctx, u)
+			if err == nil {
+				in, err = s.fetchInbox(ctx, client, u, sig.Filter, live)
+			}
+			if err != nil {
+				if shown == nil || errors.Is(err, gh.ErrReauthRequired) {
+					s.handleAPIError(sse, "inbox-sections", err, "@get('/inbox/stream')")
+					return false
+				}
+				s.logger.Warn("inbox refresh failed", "error", err)
+				kept := *shown
+				kept.Warnings = append(append([]string(nil), shown.Warnings...), "Could not refresh from GitHub, showing the last result: "+userMessage(err))
+				in = &kept
+			}
 		}
-		view, err := s.buildInbox(ctx, client, u, sig.Filter)
+		shown = in
+		view, err := s.buildInbox(ctx, in, u, sig.Filter)
 		if err != nil {
 			s.handleAPIError(sse, "inbox-sections", err, "@get('/inbox/stream')")
 			return false
@@ -125,19 +143,83 @@ func (s *Server) handleInboxStream(w http.ResponseWriter, r *http.Request) {
 		}
 		return true
 	}
-	if !render() && ctx.Err() != nil {
+	// Paint the last result at once; fetch when there is none, or it is old
+	// or stale.
+	if e, ok := s.cachedInbox(u, sig.Filter); ok && time.Since(e.at) < inboxKeep {
+		if !render(e.in, false) && ctx.Err() != nil {
+			return
+		}
+		if e.stale || time.Since(e.at) >= inboxFresh {
+			if !render(nil, false) && ctx.Err() != nil {
+				return
+			}
+		}
+	} else if !render(nil, false) && ctx.Err() != nil {
 		return
 	}
-	s.streamLoop(ctx, sse, sub, inboxRefresh, render)
+	s.streamLoop(ctx, sse, sub, inboxRefresh, s.inboxMinFetch, func() bool { return render(nil, true) })
+}
+
+// inboxCacheKey scopes a cached inbox to one user and filter.
+func inboxCacheKey(userID int64, filter string) string {
+	return fmt.Sprintf("%d\x00%s", userID, filter)
+}
+
+func (s *Server) cachedInbox(u *store.User, filter string) (inboxEntry, bool) {
+	s.inboxMu.Lock()
+	defer s.inboxMu.Unlock()
+	e, ok := s.inboxCache[inboxCacheKey(u.ID, filter)]
+	return e, ok
+}
+
+// fetchInbox runs the inbox searches on GitHub and caches the result. When
+// a page opens (live false), a result another stream fetched moments ago is
+// reused; live updates always ask GitHub.
+func (s *Server) fetchInbox(ctx context.Context, client *gh.Client, u *store.User, filter string, live bool) (*gh.Inbox, error) {
+	if e, ok := s.cachedInbox(u, filter); ok && !live && !e.stale && time.Since(e.at) < inboxDedupe {
+		return e.in, nil
+	}
+	start := time.Now()
+	in, err := client.Inbox(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	s.logger.Debug("inbox fetched", "user", u.Login, "filter", filter, "took", time.Since(start).Round(time.Millisecond))
+	s.inboxMu.Lock()
+	if len(s.inboxCache) > 256 {
+		s.inboxCache = map[string]inboxEntry{}
+	}
+	s.inboxCache[inboxCacheKey(u.ID, filter)] = inboxEntry{in: in, at: time.Now()}
+	s.inboxMu.Unlock()
+	return in, nil
+}
+
+// staleInbox marks every cached inbox of u stale after u changed something
+// through burp, so the next view refreshes instead of trusting the cache.
+func (s *Server) staleInbox(u *store.User) {
+	prefix := fmt.Sprintf("%d\x00", u.ID)
+	s.inboxMu.Lock()
+	for k, e := range s.inboxCache {
+		if strings.HasPrefix(k, prefix) {
+			e.stale = true
+			s.inboxCache[k] = e
+		}
+	}
+	s.inboxMu.Unlock()
 }
 
 // streamLoop re-renders on bus events (debounced), on the refresh interval
 // and keeps the connection alive until the client goes away.
-func (s *Server) streamLoop(ctx context.Context, sse *datastar.ServerSentEventGenerator, sub *bus.Subscription, refresh time.Duration, render func() bool) {
+//
+// minInterval spaces renders out: an event that arrives sooner than that
+// after the last render waits until minInterval has passed, folded together
+// with any others that arrive meanwhile.
+func (s *Server) streamLoop(ctx context.Context, sse *datastar.ServerSentEventGenerator, sub *bus.Subscription, refresh, minInterval time.Duration, render func() bool) {
 	var (
 		dirty    bool
 		debounce *time.Timer
 		dchan    <-chan time.Time
+		last     = time.Now()
 	)
 	ticker := time.NewTicker(refresh)
 	defer ticker.Stop()
@@ -150,17 +232,23 @@ func (s *Server) streamLoop(ctx context.Context, sse *datastar.ServerSentEventGe
 		case <-sub.C:
 			if !dirty {
 				dirty = true
-				debounce = time.NewTimer(eventDebounce)
+				wait := eventDebounce
+				if left := minInterval - time.Since(last); left > wait {
+					wait = left
+				}
+				debounce = time.NewTimer(wait)
 				dchan = debounce.C
 			}
 		case <-dchan:
 			dirty = false
 			dchan = nil
+			last = time.Now()
 			if !render() && ctx.Err() != nil {
 				return
 			}
 			ticker.Reset(refresh)
 		case <-ticker.C:
+			last = time.Now()
 			if !render() && ctx.Err() != nil {
 				return
 			}
@@ -179,11 +267,7 @@ type builtInbox struct {
 	repos []string
 }
 
-func (s *Server) buildInbox(ctx context.Context, client *gh.Client, u *store.User, filter string) (*builtInbox, error) {
-	in, err := client.Inbox(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
+func (s *Server) buildInbox(ctx context.Context, in *gh.Inbox, u *store.User, filter string) (*builtInbox, error) {
 	rows := func(items []gh.PRSummary, reason func(gh.PRSummary) string, withMarks bool) []inboxRow {
 		out := make([]inboxRow, 0, len(items))
 		for _, p := range items {

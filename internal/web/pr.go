@@ -559,7 +559,7 @@ func (s *Server) handlePRStream(w http.ResponseWriter, r *http.Request) {
 		return sse.PatchSignals([]byte(`{"prVersion": "`+v+`"}`)) == nil
 	}
 	// The page rendered the current state; only push on change.
-	s.streamLoop(ctx, sse, sub, 5*time.Minute, render)
+	s.streamLoop(ctx, sse, sub, 5*time.Minute, 0, render)
 }
 
 // prVersion fingerprints the parts of a PR the header shows.
@@ -633,6 +633,7 @@ func (s *Server) forgetPR(u *store.User, key store.PRKey) {
 	s.prMu.Lock()
 	delete(s.prCache, prCacheKey(u.ID, key))
 	s.prMu.Unlock()
+	s.staleInbox(u)
 }
 
 // setReviewed records a reviewed mark locally and mirrors it to GitHub's

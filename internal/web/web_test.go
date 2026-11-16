@@ -34,6 +34,7 @@ type fakeGitHub struct {
 	viewed    []string
 	viewedErr bool
 	merged    bool
+	inbox     int // InboxSection queries served
 	head      string
 	threads   string
 }
@@ -88,6 +89,7 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			json.Unmarshal(body, &req)
 			switch {
 			case strings.Contains(req.Query, "query InboxSection"):
+				f.inbox++
 				if q, _ := req.Vars["q"].(string); strings.Contains(q, "review-requested:@me") {
 					w.Write([]byte(`{"data": {"search": {"nodes": [` + inboxNode + `]}}}`))
 				} else {
@@ -192,6 +194,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	srv.inboxMinFetch = 0 // live re-renders fetch at once in tests
 	app := httptest.NewServer(srv.Handler())
 	t.Cleanup(app.Close)
 	return &harness{t: t, gh: f, srv: srv, app: app, store: st, bus: b}
@@ -458,6 +461,59 @@ func TestInboxStream(t *testing.T) {
 	if len(ev) != 2 || !strings.Contains(ev[1], "inbox-sections") {
 		t.Fatalf("expected re-render after event: %v", ev)
 	}
+}
+
+func (f *fakeGitHub) inboxQueries() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.inbox
+}
+
+func TestInboxCache(t *testing.T) {
+	h := newHarness(t)
+	h.signIn()
+	resp := h.request(http.MethodGet, "/inbox/stream", nil, true)
+	readSSE(t, resp, 1, 3*time.Second)
+	resp.Body.Close()
+	if n := h.gh.inboxQueries(); n != 6 {
+		t.Fatalf("first load: want 6 section queries, got %d", n)
+	}
+
+	// Reopening within inboxFresh renders from the cache: no GitHub calls.
+	resp = h.request(http.MethodGet, "/inbox/stream", nil, true)
+	r := newSSEReader(t, resp)
+	if ev := r.next(3 * time.Second); !strings.Contains(ev, "Add rate limiting") {
+		t.Fatalf("cached render: %s", ev)
+	}
+	if n := h.gh.inboxQueries(); n != 6 {
+		t.Fatalf("reopen hit GitHub: %d section queries", n)
+	}
+
+	// A webhook means something changed: the re-render fetches again.
+	h.bus.Publish(bus.Event{Topic: bus.UserTopic("me"), Kind: "pull_request"})
+	if ev := r.next(6 * time.Second); !strings.Contains(ev, "inbox-sections") {
+		t.Fatalf("re-render after event: %s", ev)
+	}
+	if n := h.gh.inboxQueries(); n != 12 {
+		t.Fatalf("event re-render: want 12 section queries in total, got %d", n)
+	}
+	resp.Body.Close()
+
+	// The viewer's own change (here: dropping the PR from the cache after a
+	// mutation) marks the inbox stale: shown at once, then refreshed.
+	u, err := h.store.GetUser(context.Background(), 77)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.srv.forgetPR(u, store.PRKey{Owner: "acme", Repo: "api", Number: 5})
+	resp = h.request(http.MethodGet, "/inbox/stream", nil, true)
+	r = newSSEReader(t, resp)
+	r.next(3 * time.Second)
+	r.next(6 * time.Second)
+	if n := h.gh.inboxQueries(); n != 18 {
+		t.Fatalf("stale inbox: want a refresh (18 queries), got %d", n)
+	}
+	resp.Body.Close()
 }
 
 func TestPRPageAndActions(t *testing.T) {
