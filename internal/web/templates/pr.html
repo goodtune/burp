@@ -12,7 +12,7 @@
     {{template "pr_files" .}}
     {{template "pr_diff" .}}
   </div>
-  <div class="dialog" style="display:none" data-show="$helpOpen" data-on:click__self="$helpOpen = false">
+  <div class="dialog" style="display:none" data-show="$helpOpen" data-on:click="evt.target === el && ($helpOpen = false)">
     <div class="dialog-box">
       <h3>Keyboard shortcuts</h3>
       <table class="keys">
@@ -107,7 +107,7 @@
   {{if .CanMerge}}<button type="button" data-on:click="$mergeOpen = true">Merge…</button>{{end}}
   <button type="button" class="primary" data-on:click="$reviewOpen = true">Review… {{if .Drafts}}<span class="badge">{{len .Drafts}} draft{{if ne (len .Drafts) 1}}s{{end}}</span>{{end}}</button>
 
-  <div class="dialog" style="display:none" data-show="$reviewOpen" data-on:click__self="$reviewOpen = false">
+  <div class="dialog" style="display:none" data-show="$reviewOpen" data-on:click="evt.target === el && ($reviewOpen = false)">
     <div class="dialog-box">
       <h3>Submit review</h3>
       <p>{{plural (len .Drafts) "draft comment"}} will be posted with this review.</p>
@@ -128,7 +128,7 @@
   </div>
 
   {{if .CanMerge}}
-  <div class="dialog" style="display:none" data-show="$mergeOpen" data-on:click__self="$mergeOpen = false">
+  <div class="dialog" style="display:none" data-show="$mergeOpen" data-on:click="evt.target === el && ($mergeOpen = false)">
     <div class="dialog-box">
       <h3>Merge #{{.PR.Number}}</h3>
       <p><code>{{.PR.HeadRefName}}</code> → <code>{{.PR.BaseRefName}}</code> at <code>{{short .PR.HeadRefOid}}</code></p>
